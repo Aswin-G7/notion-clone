@@ -13,7 +13,8 @@ import {
   CornerDownLeft,
   ChevronRight
 } from "lucide-react";
-import { Page, Block } from "../types";
+import { Page, Block, BlockType } from "../types";
+import { SlashMenu } from "./SlashMenu";
 
 const EMOJIS = [
   "📄", "🚀", "📝", "🍳", "🎯", "💡", "💻", "🎨",
@@ -43,11 +44,17 @@ export const EditorArea: React.FC = () => {
     setSelectedBlockId,
     addBlock,
     updateBlock,
+    updateBlockType,
+    updateBlockData,
     deleteBlock
   } = useApp();
 
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [showCoverPicker, setShowCoverPicker] = useState(false);
+
+  const [slashMenuOpen, setSlashMenuOpen] = useState(false);
+  const [slashMenuBlockId, setSlashMenuBlockId] = useState<string | null>(null);
+  const [slashMenuSearch, setSlashMenuSearch] = useState("");
 
   if (!activePage) {
     return (
@@ -118,11 +125,15 @@ export const EditorArea: React.FC = () => {
     return acc + text.length;
   }, 0);
 
+  const selectedBlock = activePage.blocks.find((b) => b.id === selectedBlockId);
+  const selectedBlockType = selectedBlock ? selectedBlock.type : null;
+  const selectedBlockLevel = selectedBlock?.data?.level;
+
   // Focus management effect
   React.useEffect(() => {
     if (selectedBlockId) {
       const el = document.getElementById(`block-input-${selectedBlockId}`);
-      if (el && document.activeElement !== el) {
+      if (el) {
         el.focus();
         if (el instanceof HTMLTextAreaElement || el instanceof HTMLInputElement) {
           const length = el.value.length;
@@ -130,12 +141,92 @@ export const EditorArea: React.FC = () => {
         }
       }
     }
-  }, [selectedBlockId]);
+  }, [selectedBlockId, selectedBlockType, selectedBlockLevel, slashMenuOpen]);
+
+  const handleBlockChange = (blockId: string, val: string) => {
+    updateBlock(activePage.id, blockId, val);
+
+    const block = activePage.blocks.find((b) => b.id === blockId);
+    if (
+      block &&
+      (block.type === "paragraph" ||
+        block.type === "bulleted-list" ||
+        block.type === "numbered-list" ||
+        block.type === "todo" ||
+        block.type === "quote" ||
+        block.type === "code")
+    ) {
+      if (val.startsWith("/")) {
+        const query = val.slice(1);
+        if (query.includes(" ")) {
+          setSlashMenuOpen(false);
+          setSlashMenuBlockId(null);
+          setSlashMenuSearch("");
+        } else {
+          setSlashMenuOpen(true);
+          setSlashMenuBlockId(blockId);
+          setSlashMenuSearch(query);
+        }
+      } else {
+        if (slashMenuBlockId === blockId) {
+          setSlashMenuOpen(false);
+          setSlashMenuBlockId(null);
+          setSlashMenuSearch("");
+        }
+      }
+    }
+  };
+
+  const handleSelectCommand = (commandId: string) => {
+    if (!slashMenuBlockId) return;
+
+    if (commandId === "paragraph") {
+      updateBlockType(activePage.id, slashMenuBlockId, "paragraph", { text: "" });
+    } else if (commandId === "heading-1") {
+      updateBlockType(activePage.id, slashMenuBlockId, "heading", { text: "", level: 1 });
+    } else if (commandId === "heading-2") {
+      updateBlockType(activePage.id, slashMenuBlockId, "heading", { text: "", level: 2 });
+    } else if (commandId === "heading-3") {
+      updateBlockType(activePage.id, slashMenuBlockId, "heading", { text: "", level: 3 });
+    } else if (commandId === "bulleted-list") {
+      updateBlockType(activePage.id, slashMenuBlockId, "bulleted-list", { text: "" });
+    } else if (commandId === "numbered-list") {
+      updateBlockType(activePage.id, slashMenuBlockId, "numbered-list", { text: "" });
+    } else if (commandId === "todo") {
+      updateBlockType(activePage.id, slashMenuBlockId, "todo", { text: "", checked: false });
+    } else if (commandId === "quote") {
+      updateBlockType(activePage.id, slashMenuBlockId, "quote", { text: "" });
+    } else if (commandId === "code") {
+      updateBlockType(activePage.id, slashMenuBlockId, "code", { text: "", language: "javascript" });
+    } else if (commandId === "divider") {
+      updateBlockType(activePage.id, slashMenuBlockId, "divider", { text: "" });
+    } else if (commandId === "child-page") {
+      createPage(activePage.id, slashMenuBlockId);
+      deleteBlock(activePage.id, slashMenuBlockId);
+    }
+
+    setSlashMenuOpen(false);
+    setSlashMenuBlockId(null);
+    setSlashMenuSearch("");
+  };
 
   const handleKeyDown = (
     e: React.KeyboardEvent<HTMLTextAreaElement | HTMLInputElement>,
     block: Block
   ) => {
+    // If slash menu is open for this block, let the slash menu intercept keys
+    if (slashMenuOpen && slashMenuBlockId === block.id) {
+      if (
+        e.key === "ArrowUp" ||
+        e.key === "ArrowDown" ||
+        e.key === "Enter" ||
+        e.key === "Escape"
+      ) {
+        // Handled by window capture listener in SlashMenu
+        return;
+      }
+    }
+
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       const target = e.currentTarget;
@@ -147,23 +238,42 @@ export const EditorArea: React.FC = () => {
       // Update current block text to before text
       updateBlock(activePage.id, block.id, beforeText);
 
-      // Create new paragraph block with remaining text immediately after
-      addBlock(activePage.id, "paragraph", afterText, block.id);
+      // Determine type and data for next block
+      let nextType: BlockType = "paragraph";
+      let nextData: any = {};
+      if (
+        block.type === "bulleted-list" ||
+        block.type === "numbered-list" ||
+        block.type === "todo"
+      ) {
+        nextType = block.type;
+        if (block.type === "todo") {
+          nextData = { checked: false };
+        }
+      }
+
+      // Create new block immediately after
+      addBlock(activePage.id, nextType, afterText, block.id, nextData);
     }
 
     if (e.key === "Backspace") {
       const text = block.data.text || "";
       if (text === "") {
-        // Only delete if there is more than 1 block
-        if (activePage.blocks.length > 1) {
+        if (block.type !== "paragraph") {
           e.preventDefault();
-          const currentIndex = activePage.blocks.findIndex((b) => b.id === block.id);
-          const prevBlock = currentIndex > 0 ? activePage.blocks[currentIndex - 1] : null;
-          
-          deleteBlock(activePage.id, block.id);
+          updateBlockType(activePage.id, block.id, "paragraph", { text: "" });
+        } else {
+          // Only delete if there is more than 1 block
+          if (activePage.blocks.length > 1) {
+            e.preventDefault();
+            const currentIndex = activePage.blocks.findIndex((b) => b.id === block.id);
+            const prevBlock = currentIndex > 0 ? activePage.blocks[currentIndex - 1] : null;
+            
+            deleteBlock(activePage.id, block.id);
 
-          if (prevBlock) {
-            setSelectedBlockId(prevBlock.id);
+            if (prevBlock) {
+              setSelectedBlockId(prevBlock.id);
+            }
           }
         }
       }
@@ -455,16 +565,29 @@ export const EditorArea: React.FC = () => {
                   {/* Block Content Renderers */}
                   <div className="flex-1 min-w-0">
                     {block.type === "paragraph" && (
-                      <textarea
-                        id={`block-input-${block.id}`}
-                        value={block.data.text || ""}
-                        onChange={(e) => updateBlock(activePage.id, block.id, e.target.value)}
-                        onKeyDown={(e) => handleKeyDown(e, block)}
-                        placeholder="Press Enter or start writing..."
-                        className="w-full bg-transparent resize-none outline-none font-sans text-stone-800 text-[14.5px] leading-relaxed py-0.5 focus:placeholder-stone-400"
-                        rows={Math.max(1, (block.data.text || "").split('\n').length)}
-                        onFocus={() => setSelectedBlockId(block.id)}
-                      />
+                      <div className="relative w-full">
+                        <textarea
+                          id={`block-input-${block.id}`}
+                          value={block.data.text || ""}
+                          onChange={(e) => handleBlockChange(block.id, e.target.value)}
+                          onKeyDown={(e) => handleKeyDown(e, block)}
+                          placeholder="Press Enter or start writing, or type '/' for commands..."
+                          className="w-full bg-transparent resize-none outline-none font-sans text-stone-800 text-[14.5px] leading-relaxed py-0.5 focus:placeholder-stone-400"
+                          rows={Math.max(1, (block.data.text || "").split('\n').length)}
+                          onFocus={() => setSelectedBlockId(block.id)}
+                        />
+                        {slashMenuOpen && slashMenuBlockId === block.id && (
+                          <SlashMenu
+                            searchText={slashMenuSearch}
+                            onSelect={handleSelectCommand}
+                            onClose={() => {
+                              setSlashMenuOpen(false);
+                              setSlashMenuBlockId(null);
+                              setSlashMenuSearch("");
+                            }}
+                          />
+                        )}
+                      </div>
                     )}
 
                     {block.type === "heading" && (
@@ -472,15 +595,160 @@ export const EditorArea: React.FC = () => {
                         id={`block-input-${block.id}`}
                         type="text"
                         value={block.data.text || ""}
-                        onChange={(e) => updateBlock(activePage.id, block.id, e.target.value)}
+                        onChange={(e) => handleBlockChange(block.id, e.target.value)}
                         onKeyDown={(e) => handleKeyDown(e, block)}
-                        placeholder="Heading"
+                        placeholder={`Heading ${block.data.level || 1}`}
                         className="w-full bg-transparent outline-none font-display font-bold tracking-tight text-stone-900 py-1"
                         style={{
-                          fontSize: block.data.level === 1 ? "1.5rem" : block.data.level === 3 ? "1.15rem" : "1.3rem"
+                          fontSize: block.data.level === 1 ? "1.65rem" : block.data.level === 3 ? "1.15rem" : "1.35rem"
                         }}
                         onFocus={() => setSelectedBlockId(block.id)}
                       />
+                    )}
+
+                    {block.type === "bulleted-list" && (
+                      <div className="flex items-start gap-2.5 w-full py-0.5">
+                        <span className="text-stone-400 select-none text-[15px] leading-relaxed pt-0.5 font-bold">•</span>
+                        <textarea
+                          id={`block-input-${block.id}`}
+                          value={block.data.text || ""}
+                          onChange={(e) => handleBlockChange(block.id, e.target.value)}
+                          onKeyDown={(e) => handleKeyDown(e, block)}
+                          placeholder="List item"
+                          className="flex-1 bg-transparent resize-none outline-none font-sans text-stone-800 text-[14.5px] leading-relaxed py-0.5 focus:placeholder-stone-400"
+                          rows={Math.max(1, (block.data.text || "").split('\n').length)}
+                          onFocus={() => setSelectedBlockId(block.id)}
+                        />
+                      </div>
+                    )}
+
+                    {block.type === "numbered-list" && (() => {
+                      let index = 1;
+                      const blocks = activePage.blocks;
+                      const currentIndex = blocks.findIndex((b) => b.id === block.id);
+                      for (let i = currentIndex - 1; i >= 0; i--) {
+                        if (blocks[i].type === "numbered-list") {
+                          index++;
+                        } else {
+                          break;
+                        }
+                      }
+
+                      return (
+                        <div className="flex items-start gap-2 w-full py-0.5">
+                          <span className="text-stone-400 font-sans font-medium select-none text-[14px] leading-relaxed pt-0.5 w-5 text-right shrink-0">
+                            {index}.
+                          </span>
+                          <textarea
+                            id={`block-input-${block.id}`}
+                            value={block.data.text || ""}
+                            onChange={(e) => handleBlockChange(block.id, e.target.value)}
+                            onKeyDown={(e) => handleKeyDown(e, block)}
+                            placeholder="List item"
+                            className="flex-1 bg-transparent resize-none outline-none font-sans text-stone-800 text-[14.5px] leading-relaxed py-0.5 focus:placeholder-stone-400"
+                            rows={Math.max(1, (block.data.text || "").split('\n').length)}
+                            onFocus={() => setSelectedBlockId(block.id)}
+                          />
+                        </div>
+                      );
+                    })()}
+
+                    {block.type === "todo" && (
+                      <div className="flex items-start gap-2.5 w-full py-0.5">
+                        <input
+                          type="checkbox"
+                          checked={!!block.data.checked}
+                          onChange={() => updateBlockData(activePage.id, block.id, { checked: !block.data.checked })}
+                          className="mt-1 h-4 w-4 rounded border-stone-300 text-stone-800 focus:ring-stone-400 cursor-pointer accent-stone-700 shrink-0"
+                        />
+                        <textarea
+                          id={`block-input-${block.id}`}
+                          value={block.data.text || ""}
+                          onChange={(e) => handleBlockChange(block.id, e.target.value)}
+                          onKeyDown={(e) => handleKeyDown(e, block)}
+                          placeholder="To-do"
+                          className={`flex-1 bg-transparent resize-none outline-none font-sans text-stone-800 text-[14.5px] leading-relaxed py-0.5 focus:placeholder-stone-400 ${
+                            block.data.checked ? "line-through text-stone-400" : ""
+                          }`}
+                          rows={Math.max(1, (block.data.text || "").split('\n').length)}
+                          onFocus={() => setSelectedBlockId(block.id)}
+                        />
+                      </div>
+                    )}
+
+                    {block.type === "quote" && (
+                      <div className="flex items-stretch border-l-4 border-stone-300 pl-4 py-0.5 w-full">
+                        <textarea
+                          id={`block-input-${block.id}`}
+                          value={block.data.text || ""}
+                          onChange={(e) => handleBlockChange(block.id, e.target.value)}
+                          onKeyDown={(e) => handleKeyDown(e, block)}
+                          placeholder="Empty quote"
+                          className="w-full bg-transparent resize-none outline-none font-sans text-stone-700 italic text-[14.5px] leading-relaxed py-0.5 focus:placeholder-stone-400"
+                          rows={Math.max(1, (block.data.text || "").split('\n').length)}
+                          onFocus={() => setSelectedBlockId(block.id)}
+                        />
+                      </div>
+                    )}
+
+                    {block.type === "code" && (
+                      <div className="relative w-full rounded-lg border border-stone-200 bg-stone-50/50 font-mono p-3">
+                        <div className="absolute top-2 right-2 text-[10px] text-stone-400 font-semibold select-none bg-stone-100/80 px-1.5 py-0.5 rounded uppercase font-sans">
+                          {block.data.language || "javascript"}
+                        </div>
+                        <textarea
+                          id={`block-input-${block.id}`}
+                          value={block.data.text || ""}
+                          onChange={(e) => handleBlockChange(block.id, e.target.value)}
+                          onKeyDown={(e) => handleKeyDown(e, block)}
+                          placeholder="// Write some code here..."
+                          className="w-full bg-transparent resize-none outline-none text-stone-800 text-[12.5px] leading-relaxed font-mono py-1"
+                          rows={Math.max(2, (block.data.text || "").split('\n').length)}
+                          onFocus={() => setSelectedBlockId(block.id)}
+                        />
+                      </div>
+                    )}
+
+                    {block.type === "divider" && (
+                      <div
+                        id={`block-input-${block.id}`}
+                        tabIndex={0}
+                        onKeyDown={(e) => {
+                          if (e.key === "Backspace") {
+                            if (activePage.blocks.length > 1) {
+                              e.preventDefault();
+                              const currentIndex = activePage.blocks.findIndex((b) => b.id === block.id);
+                              const prevBlock = currentIndex > 0 ? activePage.blocks[currentIndex - 1] : null;
+                              
+                              deleteBlock(activePage.id, block.id);
+
+                              if (prevBlock) {
+                                setSelectedBlockId(prevBlock.id);
+                              }
+                            }
+                          }
+                          if (e.key === "ArrowUp") {
+                            e.preventDefault();
+                            const currentIndex = activePage.blocks.findIndex((b) => b.id === block.id);
+                            if (currentIndex > 0) {
+                              const prevBlock = activePage.blocks[currentIndex - 1];
+                              setSelectedBlockId(prevBlock.id);
+                            }
+                          }
+                          if (e.key === "ArrowDown") {
+                            e.preventDefault();
+                            const currentIndex = activePage.blocks.findIndex((b) => b.id === block.id);
+                            if (currentIndex < activePage.blocks.length - 1) {
+                              const nextBlock = activePage.blocks[currentIndex + 1];
+                              setSelectedBlockId(nextBlock.id);
+                            }
+                          }
+                        }}
+                        onFocus={() => setSelectedBlockId(block.id)}
+                        className="py-4 w-full cursor-pointer group/divider flex items-center outline-none"
+                      >
+                        <div className="w-full border-t border-stone-200 group-focus/divider:border-stone-400 transition-colors" />
+                      </div>
                     )}
 
                     {block.type === "child-page" && (() => {

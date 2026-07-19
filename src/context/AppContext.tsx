@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from "react";
-import { Page, Block } from "../types";
+import { Page, Block, BlockType } from "../types";
 
 interface AppContextType {
   pages: Page[];
@@ -13,8 +13,25 @@ interface AppContextType {
   createPage: (parentId?: string | null, insertAfterBlockId?: string | null) => string;
   deletePage: (id: string) => void;
   updatePage: (id: string, updates: Partial<Page>) => void;
-  addBlock: (pageId: string, type: "paragraph" | "heading", text?: string, insertAfterBlockId?: string | null) => string;
+  addBlock: (
+    pageId: string,
+    type: BlockType,
+    text?: string,
+    insertAfterBlockId?: string | null,
+    extraData?: Partial<Block["data"]>
+  ) => string;
   updateBlock: (pageId: string, blockId: string, text: string) => void;
+  updateBlockType: (
+    pageId: string,
+    blockId: string,
+    type: BlockType,
+    extraData?: Partial<Block["data"]>
+  ) => void;
+  updateBlockData: (
+    pageId: string,
+    blockId: string,
+    data: Partial<Block["data"]>
+  ) => void;
   deleteBlock: (pageId: string, blockId: string) => void;
 }
 
@@ -295,15 +312,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const addBlock = (
     pageId: string,
-    type: "paragraph" | "heading",
+    type: BlockType,
     text = "",
-    insertAfterBlockId?: string | null
+    insertAfterBlockId?: string | null,
+    extraData?: Partial<Block["data"]>
   ) => {
     const newBlockId = `block-${Math.random().toString(36).substr(2, 9)}`;
     const newBlock: Block = {
       id: newBlockId,
       type,
-      data: { text, level: type === "heading" ? 2 : undefined }
+      data: {
+        text,
+        level: type === "heading" ? 2 : undefined,
+        checked: type === "todo" ? false : undefined,
+        ...extraData
+      }
     };
 
     setPages((prev) =>
@@ -340,6 +363,66 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           blocks: page.blocks.map((block) =>
             block.id === blockId
               ? { ...block, data: { ...block.data, text } }
+              : block
+          ),
+          updatedAt: Date.now()
+        };
+      })
+    );
+  };
+
+  const updateBlockType = (
+    pageId: string,
+    blockId: string,
+    type: BlockType,
+    extraData?: Partial<Block["data"]>
+  ) => {
+    setPages((prev) =>
+      prev.map((page) => {
+        if (page.id !== pageId) return page;
+
+        return {
+          ...page,
+          blocks: page.blocks.map((block) =>
+            block.id === blockId
+              ? {
+                  ...block,
+                  type,
+                  data: {
+                    ...block.data,
+                    level: type === "heading" ? (extraData?.level || 2) : undefined,
+                    checked: type === "todo" ? (extraData?.checked !== undefined ? extraData.checked : false) : undefined,
+                    ...extraData
+                  }
+                }
+              : block
+          ),
+          updatedAt: Date.now()
+        };
+      })
+    );
+  };
+
+  const updateBlockData = (
+    pageId: string,
+    blockId: string,
+    data: Partial<Block["data"]>
+  ) => {
+    setPages((prev) =>
+      prev.map((page) => {
+        if (page.id !== pageId) return page;
+
+        return {
+          ...page,
+          blocks: page.blocks.map((block) =>
+            block.id === blockId
+              ? {
+                  ...block,
+                  data: {
+                    ...block.data,
+                    ...data
+                  }
+                }
               : block
           ),
           updatedAt: Date.now()
@@ -400,6 +483,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         updatePage,
         addBlock,
         updateBlock,
+        updateBlockType,
+        updateBlockData,
         deleteBlock,
       }}
     >
