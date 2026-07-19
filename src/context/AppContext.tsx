@@ -33,6 +33,8 @@ interface AppContextType {
     data: Partial<Block["data"]>
   ) => void;
   deleteBlock: (pageId: string, blockId: string) => void;
+  reorderBlocks: (pageId: string, activeId: string, overId: string) => void;
+  duplicateBlock: (pageId: string, blockId: string) => string | null;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -465,6 +467,62 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
+  const reorderBlocks = (pageId: string, activeId: string, overId: string) => {
+    setPages((prev) =>
+      prev.map((page) => {
+        if (page.id !== pageId) return page;
+
+        const oldIndex = page.blocks.findIndex((block) => block.id === activeId);
+        const newIndex = page.blocks.findIndex((block) => block.id === overId);
+
+        if (oldIndex === -1 || newIndex === -1) return page;
+
+        const newBlocks = [...page.blocks];
+        const [removed] = newBlocks.splice(oldIndex, 1);
+        newBlocks.splice(newIndex, 0, removed);
+
+        return {
+          ...page,
+          blocks: newBlocks,
+          updatedAt: Date.now(),
+        };
+      })
+    );
+  };
+
+  const duplicateBlock = (pageId: string, blockId: string): string | null => {
+    let newBlockId: string | null = null;
+    setPages((prev) =>
+      prev.map((page) => {
+        if (page.id !== pageId) return page;
+
+        const targetIndex = page.blocks.findIndex((b) => b.id === blockId);
+        if (targetIndex === -1) return page;
+
+        const originalBlock = page.blocks[targetIndex];
+        newBlockId = `block-${Math.random().toString(36).substr(2, 9)}`;
+        const duplicatedBlock: Block = {
+          id: newBlockId,
+          type: originalBlock.type,
+          data: JSON.parse(JSON.stringify(originalBlock.data)),
+        };
+
+        const newBlocks = [...page.blocks];
+        newBlocks.splice(targetIndex + 1, 0, duplicatedBlock);
+
+        return {
+          ...page,
+          blocks: newBlocks,
+          updatedAt: Date.now(),
+        };
+      })
+    );
+    if (newBlockId) {
+      setSelectedBlockId(newBlockId);
+    }
+    return newBlockId;
+  };
+
   const activePage = pages.find((page) => page.id === activePageId) || null;
 
   return (
@@ -486,6 +544,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         updateBlockType,
         updateBlockData,
         deleteBlock,
+        reorderBlocks,
+        duplicateBlock,
       }}
     >
       {children}

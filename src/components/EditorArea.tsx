@@ -15,6 +15,23 @@ import {
 } from "lucide-react";
 import { Page, Block, BlockType } from "../types";
 import { SlashMenu } from "./SlashMenu";
+import { BlockToolbar } from "./BlockToolbar";
+import { ContextMenu } from "./ContextMenu";
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  DragEndEvent,
+} from "@dnd-kit/core";
+import {
+  SortableContext,
+  sortableKeyboardCoordinates,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
+import { SortableBlockWrapper } from "./SortableBlockWrapper";
 
 const EMOJIS = [
   "📄", "🚀", "📝", "🍳", "🎯", "💡", "💻", "🎨",
@@ -46,7 +63,9 @@ export const EditorArea: React.FC = () => {
     updateBlock,
     updateBlockType,
     updateBlockData,
-    deleteBlock
+    deleteBlock,
+    reorderBlocks,
+    duplicateBlock
   } = useApp();
 
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
@@ -55,6 +74,29 @@ export const EditorArea: React.FC = () => {
   const [slashMenuOpen, setSlashMenuOpen] = useState(false);
   const [slashMenuBlockId, setSlashMenuBlockId] = useState<string | null>(null);
   const [slashMenuSearch, setSlashMenuSearch] = useState("");
+
+  const [toolbarMenuBlockId, setToolbarMenuBlockId] = useState<string | null>(null);
+
+  const [contextMenuBlockId, setContextMenuBlockId] = useState<string | null>(null);
+  const [contextMenuPosition, setContextMenuPosition] = useState<{ x: number; y: number } | null>(null);
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 5,
+      },
+    }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  );
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (over && active.id !== over.id && activePage) {
+      reorderBlocks(activePage.id, active.id as string, over.id as string);
+    }
+  };
 
   if (!activePage) {
     return (
@@ -208,6 +250,95 @@ export const EditorArea: React.FC = () => {
     setSlashMenuOpen(false);
     setSlashMenuBlockId(null);
     setSlashMenuSearch("");
+  };
+
+  const handleSelectToolbarCommand = (blockId: string, commandId: string) => {
+    let newType: BlockType = "paragraph";
+    let extraData: any = {};
+
+    if (commandId === "paragraph") {
+      newType = "paragraph";
+    } else if (commandId === "heading-1") {
+      newType = "heading";
+      extraData = { level: 1 };
+    } else if (commandId === "heading-2") {
+      newType = "heading";
+      extraData = { level: 2 };
+    } else if (commandId === "heading-3") {
+      newType = "heading";
+      extraData = { level: 3 };
+    } else if (commandId === "bulleted-list") {
+      newType = "bulleted-list";
+    } else if (commandId === "numbered-list") {
+      newType = "numbered-list";
+    } else if (commandId === "todo") {
+      newType = "todo";
+      extraData = { checked: false };
+    } else if (commandId === "quote") {
+      newType = "quote";
+    } else if (commandId === "code") {
+      newType = "code";
+      extraData = { language: "javascript" };
+    } else if (commandId === "divider") {
+      newType = "divider";
+    } else if (commandId === "child-page") {
+      createPage(activePage.id, blockId);
+      setToolbarMenuBlockId(null);
+      return;
+    }
+
+    const newBlockId = addBlock(activePage.id, newType, "", blockId, extraData);
+    setSelectedBlockId(newBlockId);
+    setToolbarMenuBlockId(null);
+  };
+
+  const handlePlusClick = (e: React.MouseEvent, blockId: string) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setToolbarMenuBlockId(blockId);
+  };
+
+  const handleDragClick = (e: React.MouseEvent, blockId: string) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setSelectedBlockId(blockId);
+
+    const rect = e.currentTarget.getBoundingClientRect();
+    setContextMenuBlockId(blockId);
+    setContextMenuPosition({ x: rect.right + 4, y: rect.top });
+  };
+
+  const handleDuplicateBlock = (blockId: string) => {
+    if (!activePage) return;
+    duplicateBlock(activePage.id, blockId);
+  };
+
+  const handleDeleteBlock = (blockId: string) => {
+    if (!activePage) return;
+    const currentIndex = activePage.blocks.findIndex((b) => b.id === blockId);
+    let targetFocusId: string | null = null;
+
+    if (activePage.blocks.length > 1) {
+      if (currentIndex > 0) {
+        targetFocusId = activePage.blocks[currentIndex - 1].id;
+      } else if (currentIndex < activePage.blocks.length - 1) {
+        targetFocusId = activePage.blocks[currentIndex + 1].id;
+      }
+    }
+
+    deleteBlock(activePage.id, blockId);
+    if (targetFocusId) {
+      setSelectedBlockId(targetFocusId);
+    }
+  };
+
+  const handleTurnIntoBlock = (blockId: string, type: BlockType, extraData?: any) => {
+    if (!activePage) return;
+    if (type === "divider") {
+      updateBlockType(activePage.id, blockId, type, { text: "" });
+    } else {
+      updateBlockType(activePage.id, blockId, type, extraData);
+    }
   };
 
   const handleKeyDown = (
@@ -507,63 +638,51 @@ export const EditorArea: React.FC = () => {
         </div>
 
         {/* Blocks Sequential Container */}
-        <div className="flex-1 flex flex-col space-y-2.5">
+        <div className="flex-1 flex flex-col">
           {activePage.blocks && activePage.blocks.length > 0 ? (
-            activePage.blocks.map((block) => {
-              const isSelected = selectedBlockId === block.id;
+            <DndContext
+              sensors={sensors}
+              collisionDetection={closestCenter}
+              onDragEnd={handleDragEnd}
+            >
+              <SortableContext
+                items={activePage.blocks.map((b) => b.id)}
+                strategy={verticalListSortingStrategy}
+              >
+                {activePage.blocks.map((block, index) => {
+                  const isSelected = selectedBlockId === block.id;
+                  const prevBlock = index > 0 ? activePage.blocks[index - 1] : null;
 
-              return (
-                <div
-                  key={block.id}
-                  id={`editor-block-wrapper-${block.id}`}
-                  className={`group/block relative flex items-start gap-3 p-2 rounded-lg transition-all border-l-2 ${
-                    isSelected
-                      ? "bg-stone-50/80 border-stone-800 pl-3.5"
-                      : "border-transparent hover:bg-stone-50/30 pl-2"
-                  }`}
-                >
-                  {/* Hover Floating Options Panel */}
-                  <div className="absolute right-2.5 top-2.5 opacity-0 group-hover/block:opacity-100 flex items-center gap-1 z-10 transition-opacity bg-stone-50 border border-stone-200/50 p-1 rounded shadow-sm">
-                    {/* Add Inline child paragraph */}
-                    <button
-                      id={`block-add-p-${block.id}`}
-                      onClick={() => addBlock(activePage.id, "paragraph", "", block.id)}
-                      className="p-1 text-stone-400 hover:text-stone-800 hover:bg-stone-150 rounded transition-colors"
-                      title="Insert paragraph below"
-                    >
-                      <FileText className="h-3 w-3" />
-                    </button>
-                    {/* Add Inline child heading */}
-                    <button
-                      id={`block-add-h-${block.id}`}
-                      onClick={() => addBlock(activePage.id, "heading", "", block.id)}
-                      className="p-1 text-stone-400 hover:text-stone-800 hover:bg-stone-150 rounded transition-colors text-[9px] font-bold"
-                      title="Insert heading below"
-                    >
-                      H
-                    </button>
-                    {/* Add inline nested subpage */}
-                    <button
-                      id={`block-add-sub-${block.id}`}
-                      onClick={() => createPage(activePage.id, block.id)}
-                      className="p-1 text-stone-400 hover:text-stone-800 hover:bg-stone-150 rounded transition-colors"
-                      title="Insert nested subpage below"
-                    >
-                      <Plus className="h-3 w-3" />
-                    </button>
-                    {/* Delete block */}
-                    <button
-                      id={`block-delete-${block.id}`}
-                      onClick={() => deleteBlock(activePage.id, block.id)}
-                      className="p-1 text-stone-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors"
-                      title="Delete block"
-                    >
-                      <Trash2 className="h-3 w-3" />
-                    </button>
-                  </div>
+                  const isListType =
+                    block.type === "bulleted-list" ||
+                    block.type === "numbered-list" ||
+                    block.type === "todo";
+                  const isPrevSameType = prevBlock && prevBlock.type === block.type;
 
-                  {/* Block Content Renderers */}
-                  <div className="flex-1 min-w-0">
+                  let marginTopClass = "mt-2.5";
+                  if (index === 0) {
+                    marginTopClass = "mt-0";
+                  } else if (isListType && isPrevSameType) {
+                    marginTopClass = "mt-0";
+                  }
+
+                  let paddingYClass = "py-2";
+                  if (isListType) {
+                    paddingYClass = "py-0.5";
+                  }
+
+                  return (
+                    <SortableBlockWrapper
+                      key={block.id}
+                      block={block}
+                      isSelected={isSelected}
+                      paddingYClass={paddingYClass}
+                      marginTopClass={marginTopClass}
+                      onPlusClick={(e) => handlePlusClick(e, block.id)}
+                      onDragClick={(e) => handleDragClick(e, block.id)}
+                    >
+                      {/* Block Content Renderers */}
+                      <div className="flex-1 min-w-0 relative">
                     {block.type === "paragraph" && (
                       <div className="relative w-full">
                         <textarea
@@ -796,10 +915,20 @@ export const EditorArea: React.FC = () => {
                         </div>
                       );
                     })()}
+
+                    {toolbarMenuBlockId === block.id && (
+                      <SlashMenu
+                        searchText=""
+                        onSelect={(commandId) => handleSelectToolbarCommand(block.id, commandId)}
+                        onClose={() => setToolbarMenuBlockId(null)}
+                      />
+                    )}
                   </div>
-                </div>
+                </SortableBlockWrapper>
               );
-            })
+            })}
+          </SortableContext>
+        </DndContext>
           ) : (
             <div className="text-center py-12 border-2 border-dashed border-stone-200 rounded-xl space-y-2 select-none">
               <Sparkles className="h-6 w-6 mx-auto text-stone-300 animate-pulse" />
@@ -863,6 +992,19 @@ export const EditorArea: React.FC = () => {
         </div>
 
       </div>
+
+      {contextMenuBlockId && contextMenuPosition && (
+        <ContextMenu
+          position={contextMenuPosition}
+          onClose={() => {
+            setContextMenuBlockId(null);
+            setContextMenuPosition(null);
+          }}
+          onDuplicate={() => handleDuplicateBlock(contextMenuBlockId)}
+          onDelete={() => handleDeleteBlock(contextMenuBlockId)}
+          onTurnInto={(type, extraData) => handleTurnIntoBlock(contextMenuBlockId, type, extraData)}
+        />
+      )}
     </div>
   );
 };
