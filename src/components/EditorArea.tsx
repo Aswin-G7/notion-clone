@@ -17,6 +17,7 @@ import { Page, Block, BlockType } from "../types";
 import { SlashMenu } from "./SlashMenu";
 import { BlockToolbar } from "./BlockToolbar";
 import { ContextMenu } from "./ContextMenu";
+import { RichTextEditor } from "./RichTextEditor";
 import {
   DndContext,
   closestCenter,
@@ -32,6 +33,83 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { SortableBlockWrapper } from "./SortableBlockWrapper";
+
+const getPlainTextFromHtml = (html: string): string => {
+  if (!html) return "";
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(html, "text/html");
+  return doc.body.textContent || doc.body.innerText || "";
+};
+
+function splitHtmlAtTextOffset(html: string, offset: number): [string, string] {
+  if (offset <= 0) return ["", html];
+  
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(html, "text/html");
+  const body = doc.body;
+  
+  const leftDoc = parser.parseFromString("", "text/html");
+  const rightDoc = parser.parseFromString("", "text/html");
+  const leftBody = leftDoc.body;
+  const rightBody = rightDoc.body;
+  
+  let currentOffset = 0;
+  let splitDone = false;
+  
+  function traverse(node: Node, leftParent: Node, rightParent: Node) {
+    if (splitDone) {
+      rightParent.appendChild(node.cloneNode(true));
+      return;
+    }
+    
+    if (node.nodeType === Node.TEXT_NODE) {
+      const text = node.textContent || "";
+      const len = text.length;
+      
+      if (currentOffset + len < offset) {
+        leftParent.appendChild(node.cloneNode(true));
+        currentOffset += len;
+      } else {
+        const splitIndex = offset - currentOffset;
+        const leftText = text.substring(0, splitIndex);
+        const rightText = text.substring(splitIndex);
+        
+        if (leftText) {
+          leftParent.appendChild(leftDoc.createTextNode(leftText));
+        }
+        if (rightText) {
+          rightParent.appendChild(rightDoc.createTextNode(rightText));
+        }
+        
+        currentOffset = offset;
+        splitDone = true;
+      }
+    } else if (node.nodeType === Node.ELEMENT_NODE) {
+      const element = node as HTMLElement;
+      const leftClone = element.cloneNode(false);
+      const rightClone = element.cloneNode(false);
+      
+      const children = Array.from(element.childNodes);
+      for (const child of children) {
+        traverse(child, leftClone, rightClone);
+      }
+      
+      if (leftClone.childNodes.length > 0 || children.length === 0) {
+        leftParent.appendChild(leftClone);
+      }
+      if (rightClone.childNodes.length > 0 || children.length === 0) {
+        rightParent.appendChild(rightClone);
+      }
+    }
+  }
+  
+  const topLevelChildren = Array.from(body.childNodes);
+  for (const child of topLevelChildren) {
+    traverse(child, leftBody, rightBody);
+  }
+  
+  return [leftBody.innerHTML, rightBody.innerHTML];
+}
 
 const EMOJIS = [
   "📄", "🚀", "📝", "🍳", "🎯", "💡", "💻", "🎨",
@@ -157,13 +235,13 @@ export const EditorArea: React.FC = () => {
   // Word/Char metadata counts from blocks
   const wordCount = activePage.blocks.reduce((acc, block) => {
     if (block.type === "child-page") return acc;
-    const text = block.data.text || "";
+    const text = getPlainTextFromHtml(block.data.text || "");
     return acc + text.split(/\s+/).filter(Boolean).length;
   }, 0);
 
   const charCount = activePage.blocks.reduce((acc, block) => {
     if (block.type === "child-page") return acc;
-    const text = block.data.text || "";
+    const text = getPlainTextFromHtml(block.data.text || "");
     return acc + text.length;
   }, 0);
 
@@ -198,8 +276,9 @@ export const EditorArea: React.FC = () => {
         block.type === "quote" ||
         block.type === "code")
     ) {
-      if (val.startsWith("/")) {
-        const query = val.slice(1);
+      const plainText = getPlainTextFromHtml(val);
+      if (plainText.startsWith("/")) {
+        const query = plainText.slice(1);
         if (query.includes(" ")) {
           setSlashMenuOpen(false);
           setSlashMenuBlockId(null);
@@ -345,6 +424,42 @@ export const EditorArea: React.FC = () => {
     e: React.KeyboardEvent<HTMLTextAreaElement | HTMLInputElement>,
     block: Block
   ) => {
+    // Markdown shortcuts auto-conversion when typing at the beginning of a paragraph block and pressing Space
+    if (e.key === " " && block.type === "paragraph") {
+      const target = e.currentTarget;
+      const start = target.selectionStart || 0;
+      const end = target.selectionEnd || 0;
+
+      if (start === end) {
+        const text = target.value || "";
+        const textBeforeCursor = text.substring(0, start);
+
+        const shortcuts: { [key: string]: { type: BlockType; extraData?: any } } = {
+          "#": { type: "heading", extraData: { level: 1 } },
+          "##": { type: "heading", extraData: { level: 2 } },
+          "###": { type: "heading", extraData: { level: 3 } },
+          "-": { type: "bulleted-list" },
+          "*": { type: "bulleted-list" },
+          "1.": { type: "numbered-list" },
+          "[]": { type: "todo", extraData: { checked: false } },
+          ">": { type: "quote" },
+          "```": { type: "code", extraData: { language: "javascript" } },
+        };
+
+        if (shortcuts[textBeforeCursor] !== undefined) {
+          e.preventDefault();
+          const match = shortcuts[textBeforeCursor];
+          const remainingText = text.substring(start);
+          
+          handleTurnIntoBlock(block.id, match.type, {
+            ...match.extraData,
+            text: remainingText,
+          });
+          return;
+        }
+      }
+    }
+
     // If slash menu is open for this block, let the slash menu intercept keys
     if (slashMenuOpen && slashMenuBlockId === block.id) {
       if (
@@ -362,12 +477,10 @@ export const EditorArea: React.FC = () => {
       e.preventDefault();
       const target = e.currentTarget;
       const start = target.selectionStart || 0;
-      const text = block.data.text || "";
-      const beforeText = text.substring(0, start);
-      const afterText = text.substring(start);
+      const [beforeHtml, afterHtml] = splitHtmlAtTextOffset(block.data.text || "", start);
 
       // Update current block text to before text
-      updateBlock(activePage.id, block.id, beforeText);
+      updateBlock(activePage.id, block.id, beforeHtml);
 
       // Determine type and data for next block
       let nextType: BlockType = "paragraph";
@@ -384,11 +497,11 @@ export const EditorArea: React.FC = () => {
       }
 
       // Create new block immediately after
-      addBlock(activePage.id, nextType, afterText, block.id, nextData);
+      addBlock(activePage.id, nextType, afterHtml, block.id, nextData);
     }
 
     if (e.key === "Backspace") {
-      const text = block.data.text || "";
+      const text = getPlainTextFromHtml(block.data.text || "");
       if (text === "") {
         if (block.type !== "paragraph") {
           e.preventDefault();
@@ -685,15 +798,16 @@ export const EditorArea: React.FC = () => {
                       <div className="flex-1 min-w-0 relative">
                     {block.type === "paragraph" && (
                       <div className="relative w-full">
-                        <textarea
+                        <RichTextEditor
                           id={`block-input-${block.id}`}
                           value={block.data.text || ""}
-                          onChange={(e) => handleBlockChange(block.id, e.target.value)}
+                          onChange={(val) => handleBlockChange(block.id, val)}
                           onKeyDown={(e) => handleKeyDown(e, block)}
                           placeholder="Press Enter or start writing, or type '/' for commands..."
-                          className="w-full bg-transparent resize-none outline-none font-sans text-stone-800 text-[14.5px] leading-relaxed py-0.5 focus:placeholder-stone-400"
-                          rows={Math.max(1, (block.data.text || "").split('\n').length)}
+                          className="font-sans text-stone-800 text-[14.5px] leading-relaxed py-0.5"
+                          placeholderClassName="text-stone-300 font-sans text-[14.5px] leading-relaxed py-0.5"
                           onFocus={() => setSelectedBlockId(block.id)}
+                          isSelected={isSelected}
                         />
                         {slashMenuOpen && slashMenuBlockId === block.id && (
                           <SlashMenu
@@ -710,33 +824,35 @@ export const EditorArea: React.FC = () => {
                     )}
 
                     {block.type === "heading" && (
-                      <input
+                      <RichTextEditor
                         id={`block-input-${block.id}`}
-                        type="text"
                         value={block.data.text || ""}
-                        onChange={(e) => handleBlockChange(block.id, e.target.value)}
+                        onChange={(val) => handleBlockChange(block.id, val)}
                         onKeyDown={(e) => handleKeyDown(e, block)}
                         placeholder={`Heading ${block.data.level || 1}`}
-                        className="w-full bg-transparent outline-none font-display font-bold tracking-tight text-stone-900 py-1"
+                        className="font-display font-bold tracking-tight text-stone-900 py-1"
+                        placeholderClassName="text-stone-300 font-display font-bold tracking-tight py-1"
                         style={{
                           fontSize: block.data.level === 1 ? "1.65rem" : block.data.level === 3 ? "1.15rem" : "1.35rem"
                         }}
                         onFocus={() => setSelectedBlockId(block.id)}
+                        isSelected={isSelected}
                       />
                     )}
 
                     {block.type === "bulleted-list" && (
                       <div className="flex items-start gap-2.5 w-full py-0.5">
                         <span className="text-stone-400 select-none text-[15px] leading-relaxed pt-0.5 font-bold">•</span>
-                        <textarea
+                        <RichTextEditor
                           id={`block-input-${block.id}`}
                           value={block.data.text || ""}
-                          onChange={(e) => handleBlockChange(block.id, e.target.value)}
+                          onChange={(val) => handleBlockChange(block.id, val)}
                           onKeyDown={(e) => handleKeyDown(e, block)}
                           placeholder="List item"
-                          className="flex-1 bg-transparent resize-none outline-none font-sans text-stone-800 text-[14.5px] leading-relaxed py-0.5 focus:placeholder-stone-400"
-                          rows={Math.max(1, (block.data.text || "").split('\n').length)}
+                          className="font-sans text-stone-800 text-[14.5px] leading-relaxed py-0.5"
+                          placeholderClassName="text-stone-300 font-sans text-[14.5px] leading-relaxed py-0.5"
                           onFocus={() => setSelectedBlockId(block.id)}
+                          isSelected={isSelected}
                         />
                       </div>
                     )}
@@ -758,15 +874,16 @@ export const EditorArea: React.FC = () => {
                           <span className="text-stone-400 font-sans font-medium select-none text-[14px] leading-relaxed pt-0.5 w-5 text-right shrink-0">
                             {index}.
                           </span>
-                          <textarea
+                          <RichTextEditor
                             id={`block-input-${block.id}`}
                             value={block.data.text || ""}
-                            onChange={(e) => handleBlockChange(block.id, e.target.value)}
+                            onChange={(val) => handleBlockChange(block.id, val)}
                             onKeyDown={(e) => handleKeyDown(e, block)}
                             placeholder="List item"
-                            className="flex-1 bg-transparent resize-none outline-none font-sans text-stone-800 text-[14.5px] leading-relaxed py-0.5 focus:placeholder-stone-400"
-                            rows={Math.max(1, (block.data.text || "").split('\n').length)}
+                            className="font-sans text-stone-800 text-[14.5px] leading-relaxed py-0.5"
+                            placeholderClassName="text-stone-300 font-sans text-[14.5px] leading-relaxed py-0.5"
                             onFocus={() => setSelectedBlockId(block.id)}
+                            isSelected={isSelected}
                           />
                         </div>
                       );
@@ -780,32 +897,34 @@ export const EditorArea: React.FC = () => {
                           onChange={() => updateBlockData(activePage.id, block.id, { checked: !block.data.checked })}
                           className="mt-1 h-4 w-4 rounded border-stone-300 text-stone-800 focus:ring-stone-400 cursor-pointer accent-stone-700 shrink-0"
                         />
-                        <textarea
+                        <RichTextEditor
                           id={`block-input-${block.id}`}
                           value={block.data.text || ""}
-                          onChange={(e) => handleBlockChange(block.id, e.target.value)}
+                          onChange={(val) => handleBlockChange(block.id, val)}
                           onKeyDown={(e) => handleKeyDown(e, block)}
                           placeholder="To-do"
-                          className={`flex-1 bg-transparent resize-none outline-none font-sans text-stone-800 text-[14.5px] leading-relaxed py-0.5 focus:placeholder-stone-400 ${
+                          className={`font-sans text-stone-800 text-[14.5px] leading-relaxed py-0.5 ${
                             block.data.checked ? "line-through text-stone-400" : ""
                           }`}
-                          rows={Math.max(1, (block.data.text || "").split('\n').length)}
+                          placeholderClassName="text-stone-300 font-sans text-[14.5px] leading-relaxed py-0.5"
                           onFocus={() => setSelectedBlockId(block.id)}
+                          isSelected={isSelected}
                         />
                       </div>
                     )}
 
                     {block.type === "quote" && (
                       <div className="flex items-stretch border-l-4 border-stone-300 pl-4 py-0.5 w-full">
-                        <textarea
+                        <RichTextEditor
                           id={`block-input-${block.id}`}
                           value={block.data.text || ""}
-                          onChange={(e) => handleBlockChange(block.id, e.target.value)}
+                          onChange={(val) => handleBlockChange(block.id, val)}
                           onKeyDown={(e) => handleKeyDown(e, block)}
                           placeholder="Empty quote"
-                          className="w-full bg-transparent resize-none outline-none font-sans text-stone-700 italic text-[14.5px] leading-relaxed py-0.5 focus:placeholder-stone-400"
-                          rows={Math.max(1, (block.data.text || "").split('\n').length)}
+                          className="font-sans text-stone-700 italic text-[14.5px] leading-relaxed py-0.5"
+                          placeholderClassName="text-stone-300 font-sans text-[14.5px] leading-relaxed py-0.5"
                           onFocus={() => setSelectedBlockId(block.id)}
+                          isSelected={isSelected}
                         />
                       </div>
                     )}
@@ -815,15 +934,16 @@ export const EditorArea: React.FC = () => {
                         <div className="absolute top-2 right-2 text-[10px] text-stone-400 font-semibold select-none bg-stone-100/80 px-1.5 py-0.5 rounded uppercase font-sans">
                           {block.data.language || "javascript"}
                         </div>
-                        <textarea
+                        <RichTextEditor
                           id={`block-input-${block.id}`}
                           value={block.data.text || ""}
-                          onChange={(e) => handleBlockChange(block.id, e.target.value)}
+                          onChange={(val) => handleBlockChange(block.id, val)}
                           onKeyDown={(e) => handleKeyDown(e, block)}
                           placeholder="// Write some code here..."
-                          className="w-full bg-transparent resize-none outline-none text-stone-800 text-[12.5px] leading-relaxed font-mono py-1"
-                          rows={Math.max(2, (block.data.text || "").split('\n').length)}
+                          className="text-stone-800 text-[12.5px] leading-relaxed font-mono py-1"
+                          placeholderClassName="text-stone-300 font-mono text-[12.5px] leading-relaxed py-1"
                           onFocus={() => setSelectedBlockId(block.id)}
+                          isSelected={isSelected}
                         />
                       </div>
                     )}
