@@ -33,6 +33,7 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { SortableBlockWrapper } from "./SortableBlockWrapper";
+import { ImageBlock } from "./ImageBlock";
 
 const getPlainTextFromHtml = (html: string): string => {
   if (!html) return "";
@@ -321,6 +322,8 @@ export const EditorArea: React.FC = () => {
       updateBlockType(activePage.id, slashMenuBlockId, "code", { text: "", language: "javascript" });
     } else if (commandId === "divider") {
       updateBlockType(activePage.id, slashMenuBlockId, "divider", { text: "" });
+    } else if (commandId === "image") {
+      updateBlockType(activePage.id, slashMenuBlockId, "image", { url: undefined, width: 100 });
     } else if (commandId === "child-page") {
       createPage(activePage.id, slashMenuBlockId);
       deleteBlock(activePage.id, slashMenuBlockId);
@@ -360,6 +363,9 @@ export const EditorArea: React.FC = () => {
       extraData = { language: "javascript" };
     } else if (commandId === "divider") {
       newType = "divider";
+    } else if (commandId === "image") {
+      newType = "image";
+      extraData = { url: undefined, width: 100 };
     } else if (commandId === "child-page") {
       createPage(activePage.id, blockId);
       setToolbarMenuBlockId(null);
@@ -394,20 +400,36 @@ export const EditorArea: React.FC = () => {
 
   const handleDeleteBlock = (blockId: string) => {
     if (!activePage) return;
-    const currentIndex = activePage.blocks.findIndex((b) => b.id === blockId);
-    let targetFocusId: string | null = null;
+    if (activePage.blocks.length <= 1) return;
 
-    if (activePage.blocks.length > 1) {
-      if (currentIndex > 0) {
-        targetFocusId = activePage.blocks[currentIndex - 1].id;
-      } else if (currentIndex < activePage.blocks.length - 1) {
-        targetFocusId = activePage.blocks[currentIndex + 1].id;
-      }
+    const currentIndex = activePage.blocks.findIndex((b) => b.id === blockId);
+    if (currentIndex === -1) return;
+
+    let targetFocusId: string | null = null;
+    if (currentIndex > 0) {
+      targetFocusId = activePage.blocks[currentIndex - 1].id;
+    } else if (currentIndex < activePage.blocks.length - 1) {
+      targetFocusId = activePage.blocks[currentIndex + 1].id;
     }
 
     deleteBlock(activePage.id, blockId);
+
     if (targetFocusId) {
       setSelectedBlockId(targetFocusId);
+
+      const focusTarget = () => {
+        const el = document.getElementById(`block-input-${targetFocusId}`);
+        if (el) {
+          el.focus();
+          if (el instanceof HTMLTextAreaElement || el instanceof HTMLInputElement) {
+            const length = el.value.length;
+            el.setSelectionRange(length, length);
+          }
+        }
+      };
+
+      focusTarget();
+      requestAnimationFrame(focusTarget);
     }
   };
 
@@ -510,14 +532,7 @@ export const EditorArea: React.FC = () => {
           // Only delete if there is more than 1 block
           if (activePage.blocks.length > 1) {
             e.preventDefault();
-            const currentIndex = activePage.blocks.findIndex((b) => b.id === block.id);
-            const prevBlock = currentIndex > 0 ? activePage.blocks[currentIndex - 1] : null;
-            
-            deleteBlock(activePage.id, block.id);
-
-            if (prevBlock) {
-              setSelectedBlockId(prevBlock.id);
-            }
+            handleDeleteBlock(block.id);
           }
         }
       }
@@ -584,20 +599,50 @@ export const EditorArea: React.FC = () => {
     if (e.key === "Backspace") {
       if (activePage.blocks.length > 1) {
         e.preventDefault();
-        const currentIndex = activePage.blocks.findIndex((b) => b.id === block.id);
-        const prevBlock = currentIndex > 0 ? activePage.blocks[currentIndex - 1] : null;
-        
-        deleteBlock(activePage.id, block.id);
-
-        if (prevBlock) {
-          setSelectedBlockId(prevBlock.id);
-        }
+        handleDeleteBlock(block.id);
       }
     }
   };
 
+  const handleWorkspacePaste = (e: React.ClipboardEvent) => {
+    if (e.clipboardData.files && e.clipboardData.files.length > 0) {
+      const file = e.clipboardData.files[0];
+      if (file.type.startsWith("image/")) {
+        e.preventDefault();
+        const url = URL.createObjectURL(file);
+        const newBlockId = addBlock(activePage.id, "image", "", selectedBlockId, { url, width: 100 });
+        setSelectedBlockId(newBlockId);
+      }
+    }
+  };
+
+  const handleWorkspaceDrop = (e: React.DragEvent) => {
+    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+      const file = e.dataTransfer.files[0];
+      if (file.type.startsWith("image/")) {
+        e.preventDefault();
+        e.stopPropagation();
+        const url = URL.createObjectURL(file);
+        const newBlockId = addBlock(activePage.id, "image", "", selectedBlockId, { url, width: 100 });
+        setSelectedBlockId(newBlockId);
+      }
+    }
+  };
+
+  const handleWorkspaceDragOver = (e: React.DragEvent) => {
+    if (e.dataTransfer.types.includes("Files")) {
+      e.preventDefault();
+    }
+  };
+
   return (
-    <div id="editor-workspace" className="flex-1 flex flex-col bg-white overflow-y-auto relative">
+    <div
+      id="editor-workspace"
+      onPaste={handleWorkspacePaste}
+      onDrop={handleWorkspaceDrop}
+      onDragOver={handleWorkspaceDragOver}
+      className="flex-1 flex flex-col bg-white overflow-y-auto relative"
+    >
       
       {/* Cover Image Banner */}
       {activePage.coverImage ? (
@@ -956,14 +1001,7 @@ export const EditorArea: React.FC = () => {
                           if (e.key === "Backspace") {
                             if (activePage.blocks.length > 1) {
                               e.preventDefault();
-                              const currentIndex = activePage.blocks.findIndex((b) => b.id === block.id);
-                              const prevBlock = currentIndex > 0 ? activePage.blocks[currentIndex - 1] : null;
-                              
-                              deleteBlock(activePage.id, block.id);
-
-                              if (prevBlock) {
-                                setSelectedBlockId(prevBlock.id);
-                              }
+                              handleDeleteBlock(block.id);
                             }
                           }
                           if (e.key === "ArrowUp") {
@@ -988,6 +1026,32 @@ export const EditorArea: React.FC = () => {
                       >
                         <div className="w-full border-t border-stone-200 group-focus/divider:border-stone-400 transition-colors" />
                       </div>
+                    )}
+
+                    {block.type === "image" && (
+                      <ImageBlock
+                        block={block}
+                        isSelected={isSelected}
+                        onUpdateData={(data) => updateBlockData(activePage.id, block.id, data)}
+                        onSelectBlock={() => setSelectedBlockId(block.id)}
+                        onDeleteBlock={() => handleDeleteBlock(block.id)}
+                        onNavigateUp={() => {
+                          const currentIndex = activePage.blocks.findIndex((b) => b.id === block.id);
+                          if (currentIndex > 0) {
+                            setSelectedBlockId(activePage.blocks[currentIndex - 1].id);
+                          }
+                        }}
+                        onNavigateDown={() => {
+                          const currentIndex = activePage.blocks.findIndex((b) => b.id === block.id);
+                          if (currentIndex < activePage.blocks.length - 1) {
+                            setSelectedBlockId(activePage.blocks[currentIndex + 1].id);
+                          }
+                        }}
+                        onInsertParagraphAfter={() => {
+                          const newBlockId = addBlock(activePage.id, "paragraph", "", block.id);
+                          setSelectedBlockId(newBlockId);
+                        }}
+                      />
                     )}
 
                     {block.type === "child-page" && (() => {
@@ -1087,6 +1151,17 @@ export const EditorArea: React.FC = () => {
               >
                 <span className="text-xs font-bold text-stone-400 font-display">H</span>
                 <span>+ Heading</span>
+              </button>
+              <button
+                id="bottom-insert-image-btn"
+                onClick={() => {
+                  const newBlockId = addBlock(activePage.id, "image", "", selectedBlockId, { url: undefined, width: 100 });
+                  setSelectedBlockId(newBlockId);
+                }}
+                className="flex-1 min-w-[120px] flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg border border-stone-200/60 bg-stone-50 hover:bg-stone-100 text-xs font-semibold text-stone-600 hover:text-stone-900 cursor-pointer transition-all active:scale-95"
+              >
+                <ImageIcon className="h-3.5 w-3.5 text-stone-400" />
+                <span>+ Image</span>
               </button>
               <button
                 id="bottom-insert-subpage-btn"

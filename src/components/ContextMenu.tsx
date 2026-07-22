@@ -13,6 +13,7 @@ import {
   Quote,
   Code,
   Minus,
+  Image as ImageIcon,
 } from "lucide-react";
 import { BlockType } from "../types";
 
@@ -35,6 +36,7 @@ const TURN_INTO_OPTIONS = [
   { id: "quote", label: "Quote", icon: Quote },
   { id: "code", label: "CodeBlock", icon: Code },
   { id: "divider", label: "Divider", icon: Minus },
+  { id: "image", label: "Image", icon: ImageIcon },
 ];
 
 export const ContextMenu: React.FC<ContextMenuProps> = ({
@@ -185,6 +187,8 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
                       blockType = "quote";
                     } else if (option.id === "divider") {
                       blockType = "divider";
+                    } else if (option.id === "image") {
+                      blockType = "image";
                     }
                     onTurnInto(blockType, option.extraData);
                     onClose();
@@ -204,7 +208,12 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
 
       <button
         id="context-menu-delete"
+        onMouseDown={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+        }}
         onClick={(e) => {
+          e.preventDefault();
           e.stopPropagation();
           onDelete();
           onClose();

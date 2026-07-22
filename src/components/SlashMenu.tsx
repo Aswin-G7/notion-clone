@@ -11,6 +11,7 @@ import {
   Code,
   Minus,
   FilePlus,
+  Image as ImageIcon,
 } from "lucide-react";
 
 export interface CommandItem {
@@ -86,6 +87,12 @@ export const COMMANDS: CommandItem[] = [
     label: "Divider",
     description: "Visually divide blocks with a line.",
     icon: <Minus className="h-4 w-4 text-stone-500" />,
+  },
+  {
+    id: "image",
+    label: "Image",
+    description: "Upload or embed an image with a file or link.",
+    icon: <ImageIcon className="h-4 w-4 text-stone-500" />,
   },
   {
     id: "child-page",

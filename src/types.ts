@@ -7,7 +7,8 @@ export type BlockType =
   | "todo"
   | "quote"
   | "code"
-  | "divider";
+  | "divider"
+  | "image";
 
 export interface Block {
   id: string;
@@ -18,6 +19,9 @@ export interface Block {
     pageId?: string; // for child-page block type
     checked?: boolean; // for todo check status
     language?: string; // for code block syntax highlighting (optional)
+    url?: string; // for image block URL/src
+    caption?: string; // for image block caption
+    width?: number; // for image block width percentage (e.g. 20 to 100)
   };
 }
 
