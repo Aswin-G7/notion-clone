@@ -248,7 +248,7 @@ function ShortcutsPlugin({ onKeyDown, onFocus }: ShortcutsPluginProps) {
             // Only handle markdown shortcuts if selection is collapsed
             if (start === end) {
               const textBeforeCursor = text.substring(0, start);
-              const shortcuts = ["#", "##", "###", "-", "*", "1.", "[]", ">", "```"];
+              const shortcuts = ["#", "##", "###", "-", "*", "1.", "[]", ">", "!", '"', "|", "```"];
               if (shortcuts.includes(textBeforeCursor)) {
                 shouldIntercept = true;
               }

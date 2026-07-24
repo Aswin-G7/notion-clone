@@ -12,6 +12,9 @@ import {
   Minus,
   FilePlus,
   Image as ImageIcon,
+  ChevronRight,
+  Lightbulb,
+  Table,
 } from "lucide-react";
 
 export interface CommandItem {
@@ -93,6 +96,24 @@ export const COMMANDS: CommandItem[] = [
     label: "Image",
     description: "Upload or embed an image with a file or link.",
     icon: <ImageIcon className="h-4 w-4 text-stone-500" />,
+  },
+  {
+    id: "toggle",
+    label: "Toggle list",
+    description: "Toggles can show and hide content inside.",
+    icon: <ChevronRight className="h-4 w-4 text-stone-500" />,
+  },
+  {
+    id: "callout",
+    label: "Callout",
+    description: "Make text stand out with an icon background.",
+    icon: <Lightbulb className="h-4 w-4 text-stone-500" />,
+  },
+  {
+    id: "table",
+    label: "Table",
+    description: "Add a simple table.",
+    icon: <Table className="h-4 w-4 text-stone-500" />,
   },
   {
     id: "child-page",

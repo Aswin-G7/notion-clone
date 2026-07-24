@@ -14,6 +14,8 @@ import {
   Code,
   Minus,
   Image as ImageIcon,
+  Lightbulb,
+  Table,
 } from "lucide-react";
 import { BlockType } from "../types";
 
@@ -34,9 +36,12 @@ const TURN_INTO_OPTIONS = [
   { id: "numbered-list", label: "Numbered List", icon: ListOrdered },
   { id: "todo", label: "To-do List", icon: CheckSquare },
   { id: "quote", label: "Quote", icon: Quote },
+  { id: "callout", label: "Callout", icon: Lightbulb, extraData: { icon: "💡" } },
+  { id: "table", label: "Table", icon: Table, extraData: { rows: [["", "", ""], ["", "", ""], ["", "", ""]] } },
   { id: "code", label: "CodeBlock", icon: Code },
   { id: "divider", label: "Divider", icon: Minus },
   { id: "image", label: "Image", icon: ImageIcon },
+  { id: "toggle", label: "Toggle list", icon: ChevronRight },
 ];
 
 export const ContextMenu: React.FC<ContextMenuProps> = ({
@@ -189,6 +194,12 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
                       blockType = "divider";
                     } else if (option.id === "image") {
                       blockType = "image";
+                    } else if (option.id === "toggle") {
+                      blockType = "toggle";
+                    } else if (option.id === "callout") {
+                      blockType = "callout";
+                    } else if (option.id === "table") {
+                      blockType = "table";
                     }
                     onTurnInto(blockType, option.extraData);
                     onClose();

@@ -8,7 +8,10 @@ export type BlockType =
   | "quote"
   | "code"
   | "divider"
-  | "image";
+  | "image"
+  | "toggle"
+  | "callout"
+  | "table";
 
 export interface Block {
   id: string;
@@ -22,6 +25,12 @@ export interface Block {
     url?: string; // for image block URL/src
     caption?: string; // for image block caption
     width?: number; // for image block width percentage (e.g. 20 to 100)
+    collapsed?: boolean; // for toggle block collapsed state
+    parentId?: string | null; // for nested child blocks inside a toggle
+    icon?: string; // for callout icon/emoji
+    rows?: string[][]; // for table block cell matrix
+    hasHeaderRow?: boolean; // for table block header row
+    hasHeaderColumn?: boolean; // for table block header column
   };
 }
 

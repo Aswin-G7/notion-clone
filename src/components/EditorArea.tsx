@@ -11,13 +11,16 @@ import {
   ChevronDown,
   LayoutGrid,
   CornerDownLeft,
-  ChevronRight
+  ChevronRight,
+  Lightbulb,
 } from "lucide-react";
 import { Page, Block, BlockType } from "../types";
 import { SlashMenu } from "./SlashMenu";
 import { BlockToolbar } from "./BlockToolbar";
 import { ContextMenu } from "./ContextMenu";
 import { RichTextEditor } from "./RichTextEditor";
+import { CodeBlock } from "./CodeBlock";
+import { TableBlock } from "./TableBlock";
 import {
   DndContext,
   closestCenter,
@@ -119,6 +122,31 @@ const EMOJIS = [
   "🐱", "🐶", "🥑", "🥐", "🏔️", "🏕️", "🏠", "⏰"
 ];
 
+const isBlockVisible = (block: Block, blocksMap: Map<string, Block>): boolean => {
+  let currParentId = block.data?.parentId;
+  while (currParentId) {
+    const parent = blocksMap.get(currParentId);
+    if (!parent) break;
+    if (parent.type === "toggle" && parent.data?.collapsed) {
+      return false;
+    }
+    currParentId = parent.data?.parentId;
+  }
+  return true;
+};
+
+const getBlockDepth = (block: Block, blocksMap: Map<string, Block>): number => {
+  let depth = 0;
+  let currParentId = block.data?.parentId;
+  while (currParentId) {
+    depth++;
+    const parent = blocksMap.get(currParentId);
+    if (!parent) break;
+    currParentId = parent.data?.parentId;
+  }
+  return depth;
+};
+
 const COVER_PRESETS = [
   "https://images.unsplash.com/photo-1507842217343-583bb7270b66?q=80&w=1200&auto=format&fit=crop", // Library/books
   "https://images.unsplash.com/photo-1517842645767-c639042777db?q=80&w=1200&auto=format&fit=crop", // Notebook
@@ -158,6 +186,20 @@ export const EditorArea: React.FC = () => {
 
   const [contextMenuBlockId, setContextMenuBlockId] = useState<string | null>(null);
   const [contextMenuPosition, setContextMenuPosition] = useState<{ x: number; y: number } | null>(null);
+  const [calloutEmojiPickerBlockId, setCalloutEmojiPickerBlockId] = useState<string | null>(null);
+
+  React.useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (calloutEmojiPickerBlockId) {
+        const pickerEl = document.getElementById(`callout-emoji-picker-${calloutEmojiPickerBlockId}`);
+        if (pickerEl && !pickerEl.contains(e.target as Node)) {
+          setCalloutEmojiPickerBlockId(null);
+        }
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [calloutEmojiPickerBlockId]);
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -172,9 +214,36 @@ export const EditorArea: React.FC = () => {
 
   const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;
-    if (over && active.id !== over.id && activePage) {
-      reorderBlocks(activePage.id, active.id as string, over.id as string);
+    if (!activePage) return;
+
+    const draggedBlockId = active.id as string;
+
+    if (over && active.id !== over.id) {
+      reorderBlocks(activePage.id, draggedBlockId, over.id as string);
     }
+
+    setSelectedBlockId(draggedBlockId);
+
+    const focusTarget = () => {
+      const el = document.getElementById(`block-input-${draggedBlockId}`);
+      if (el) {
+        el.focus();
+        if (el instanceof HTMLTextAreaElement || el instanceof HTMLInputElement) {
+          const start = el.selectionStart;
+          const end = el.selectionEnd;
+          if (start !== null && end !== null && (start > 0 || end > 0)) {
+            el.setSelectionRange(start, end);
+          } else {
+            const length = el.value.length;
+            el.setSelectionRange(length, length);
+          }
+        }
+      }
+    };
+
+    focusTarget();
+    requestAnimationFrame(focusTarget);
+    setTimeout(focusTarget, 50);
   };
 
   if (!activePage) {
@@ -275,7 +344,9 @@ export const EditorArea: React.FC = () => {
         block.type === "numbered-list" ||
         block.type === "todo" ||
         block.type === "quote" ||
-        block.type === "code")
+        block.type === "code" ||
+        block.type === "toggle" ||
+        block.type === "callout")
     ) {
       const plainText = getPlainTextFromHtml(val);
       if (plainText.startsWith("/")) {
@@ -320,10 +391,22 @@ export const EditorArea: React.FC = () => {
       updateBlockType(activePage.id, slashMenuBlockId, "quote", { text: "" });
     } else if (commandId === "code") {
       updateBlockType(activePage.id, slashMenuBlockId, "code", { text: "", language: "javascript" });
+    } else if (commandId === "table") {
+      updateBlockType(activePage.id, slashMenuBlockId, "table", {
+        rows: [
+          ["", "", ""],
+          ["", "", ""],
+          ["", "", ""],
+        ],
+      });
     } else if (commandId === "divider") {
       updateBlockType(activePage.id, slashMenuBlockId, "divider", { text: "" });
     } else if (commandId === "image") {
       updateBlockType(activePage.id, slashMenuBlockId, "image", { url: undefined, width: 100 });
+    } else if (commandId === "toggle") {
+      updateBlockType(activePage.id, slashMenuBlockId, "toggle", { text: "", collapsed: false });
+    } else if (commandId === "callout") {
+      updateBlockType(activePage.id, slashMenuBlockId, "callout", { text: "", icon: "💡" });
     } else if (commandId === "child-page") {
       createPage(activePage.id, slashMenuBlockId);
       deleteBlock(activePage.id, slashMenuBlockId);
@@ -361,11 +444,26 @@ export const EditorArea: React.FC = () => {
     } else if (commandId === "code") {
       newType = "code";
       extraData = { language: "javascript" };
+    } else if (commandId === "table") {
+      newType = "table";
+      extraData = {
+        rows: [
+          ["", "", ""],
+          ["", "", ""],
+          ["", "", ""],
+        ],
+      };
     } else if (commandId === "divider") {
       newType = "divider";
     } else if (commandId === "image") {
       newType = "image";
       extraData = { url: undefined, width: 100 };
+    } else if (commandId === "toggle") {
+      newType = "toggle";
+      extraData = { collapsed: false };
+    } else if (commandId === "callout") {
+      newType = "callout";
+      extraData = { icon: "💡" };
     } else if (commandId === "child-page") {
       createPage(activePage.id, blockId);
       setToolbarMenuBlockId(null);
@@ -437,6 +535,8 @@ export const EditorArea: React.FC = () => {
     if (!activePage) return;
     if (type === "divider") {
       updateBlockType(activePage.id, blockId, type, { text: "" });
+    } else if (type === "callout") {
+      updateBlockType(activePage.id, blockId, type, { icon: "💡", ...extraData });
     } else {
       updateBlockType(activePage.id, blockId, type, extraData);
     }
@@ -446,6 +546,8 @@ export const EditorArea: React.FC = () => {
     e: React.KeyboardEvent<HTMLTextAreaElement | HTMLInputElement>,
     block: Block
   ) => {
+    if (!activePage) return;
+
     // Markdown shortcuts auto-conversion when typing at the beginning of a paragraph block and pressing Space
     if (e.key === " " && block.type === "paragraph") {
       const target = e.currentTarget;
@@ -464,7 +566,10 @@ export const EditorArea: React.FC = () => {
           "*": { type: "bulleted-list" },
           "1.": { type: "numbered-list" },
           "[]": { type: "todo", extraData: { checked: false } },
-          ">": { type: "quote" },
+          ">": { type: "toggle", extraData: { collapsed: false } },
+          "!": { type: "callout", extraData: { icon: "💡" } },
+          '"': { type: "quote" },
+          "|": { type: "quote" },
           "```": { type: "code", extraData: { language: "javascript" } },
         };
 
@@ -480,6 +585,37 @@ export const EditorArea: React.FC = () => {
           return;
         }
       }
+    }
+
+    // Tab key: Indent block into previous block or toggle
+    if (e.key === "Tab" && !e.shiftKey) {
+      e.preventDefault();
+      const blocksMap = new Map<string, Block>(activePage.blocks.map((b) => [b.id, b]));
+      const visibleBlocks = activePage.blocks.filter((b) => isBlockVisible(b, blocksMap));
+      const idx = visibleBlocks.findIndex((b) => b.id === block.id);
+      if (idx > 0) {
+        const prevBlock = visibleBlocks[idx - 1];
+        if (prevBlock.type === "toggle") {
+          updateBlockData(activePage.id, block.id, { parentId: prevBlock.id });
+          if (prevBlock.data.collapsed) {
+            updateBlockData(activePage.id, prevBlock.id, { collapsed: false });
+          }
+        } else {
+          updateBlockType(activePage.id, prevBlock.id, "toggle", { collapsed: false });
+          updateBlockData(activePage.id, block.id, { parentId: prevBlock.id });
+        }
+      }
+      return;
+    }
+
+    // Shift+Tab key: Outdent block
+    if (e.key === "Tab" && e.shiftKey) {
+      e.preventDefault();
+      if (block.data.parentId) {
+        const parentBlock = activePage.blocks.find((b) => b.id === block.data.parentId);
+        updateBlockData(activePage.id, block.id, { parentId: parentBlock?.data?.parentId || null });
+      }
+      return;
     }
 
     // If slash menu is open for this block, let the slash menu intercept keys
@@ -499,14 +635,63 @@ export const EditorArea: React.FC = () => {
       e.preventDefault();
       const target = e.currentTarget;
       const start = target.selectionStart || 0;
-      const [beforeHtml, afterHtml] = splitHtmlAtTextOffset(block.data.text || "", start);
+      const textPlain = getPlainTextFromHtml(block.data.text || "").trim();
 
-      // Update current block text to before text
+      // Case 1: Empty block inside a toggle (or child block)
+      if (textPlain === "") {
+        if (block.type !== "paragraph") {
+          updateBlockType(activePage.id, block.id, "paragraph", { text: "" });
+          return;
+        }
+        if (block.data.parentId) {
+          const parentBlock = activePage.blocks.find((b) => b.id === block.data.parentId);
+          const outerParentId = parentBlock?.data?.parentId || null;
+
+          // Delete current empty child block
+          deleteBlock(activePage.id, block.id);
+
+          // Add new paragraph block immediately after parent toggle subtree
+          const insertAfterId = parentBlock ? parentBlock.id : block.id;
+          const newBlockId = addBlock(
+            activePage.id,
+            "paragraph",
+            "",
+            insertAfterId,
+            { parentId: outerParentId }
+          );
+          setSelectedBlockId(newBlockId);
+          return;
+        }
+      }
+
+      // Case 2: Caret is inside a Toggle block title
+      if (block.type === "toggle") {
+        const [beforeHtml, afterHtml] = splitHtmlAtTextOffset(block.data.text || "", start);
+        updateBlock(activePage.id, block.id, beforeHtml);
+
+        // Expand toggle if collapsed so the new child is visible
+        if (block.data.collapsed) {
+          updateBlockData(activePage.id, block.id, { collapsed: false });
+        }
+
+        // Create the first child block inside the Toggle
+        const newBlockId = addBlock(
+          activePage.id,
+          "paragraph",
+          afterHtml,
+          block.id,
+          { parentId: block.id, insertDirectlyAfter: true }
+        );
+        setSelectedBlockId(newBlockId);
+        return;
+      }
+
+      // Case 3: Standard block or non-empty child block
+      const [beforeHtml, afterHtml] = splitHtmlAtTextOffset(block.data.text || "", start);
       updateBlock(activePage.id, block.id, beforeHtml);
 
-      // Determine type and data for next block
       let nextType: BlockType = "paragraph";
-      let nextData: any = {};
+      let nextData: any = { parentId: block.data.parentId || null };
       if (
         block.type === "bulleted-list" ||
         block.type === "numbered-list" ||
@@ -514,12 +699,12 @@ export const EditorArea: React.FC = () => {
       ) {
         nextType = block.type;
         if (block.type === "todo") {
-          nextData = { checked: false };
+          nextData.checked = false;
         }
       }
 
-      // Create new block immediately after
-      addBlock(activePage.id, nextType, afterHtml, block.id, nextData);
+      const newBlockId = addBlock(activePage.id, nextType, afterHtml, block.id, nextData);
+      setSelectedBlockId(newBlockId);
     }
 
     if (e.key === "Backspace") {
@@ -528,6 +713,11 @@ export const EditorArea: React.FC = () => {
         if (block.type !== "paragraph") {
           e.preventDefault();
           updateBlockType(activePage.id, block.id, "paragraph", { text: "" });
+        } else if (block.data.parentId) {
+          e.preventDefault();
+          // Outdent child block on Backspace if empty
+          const parentBlock = activePage.blocks.find((b) => b.id === block.data.parentId);
+          updateBlockData(activePage.id, block.id, { parentId: parentBlock?.data?.parentId || null });
         } else {
           // Only delete if there is more than 1 block
           if (activePage.blocks.length > 1) {
@@ -542,10 +732,12 @@ export const EditorArea: React.FC = () => {
       const target = e.currentTarget;
       const isAtStart = target.selectionStart === 0 && target.selectionEnd === 0;
       if (isAtStart) {
-        const currentIndex = activePage.blocks.findIndex((b) => b.id === block.id);
+        const blocksMap = new Map<string, Block>(activePage.blocks.map((b) => [b.id, b]));
+        const visibleBlocks = activePage.blocks.filter((b) => isBlockVisible(b, blocksMap));
+        const currentIndex = visibleBlocks.findIndex((b) => b.id === block.id);
         if (currentIndex > 0) {
           e.preventDefault();
-          const prevBlock = activePage.blocks[currentIndex - 1];
+          const prevBlock = visibleBlocks[currentIndex - 1];
           setSelectedBlockId(prevBlock.id);
         }
       }
@@ -556,10 +748,12 @@ export const EditorArea: React.FC = () => {
       const textLength = target.value.length;
       const isAtEnd = target.selectionStart === textLength && target.selectionEnd === textLength;
       if (isAtEnd) {
-        const currentIndex = activePage.blocks.findIndex((b) => b.id === block.id);
-        if (currentIndex < activePage.blocks.length - 1) {
+        const blocksMap = new Map<string, Block>(activePage.blocks.map((b) => [b.id, b]));
+        const visibleBlocks = activePage.blocks.filter((b) => isBlockVisible(b, blocksMap));
+        const currentIndex = visibleBlocks.findIndex((b) => b.id === block.id);
+        if (currentIndex < visibleBlocks.length - 1) {
           e.preventDefault();
-          const nextBlock = activePage.blocks[currentIndex + 1];
+          const nextBlock = visibleBlocks[currentIndex + 1];
           setSelectedBlockId(nextBlock.id);
         }
       }
@@ -797,93 +991,209 @@ export const EditorArea: React.FC = () => {
 
         {/* Blocks Sequential Container */}
         <div className="flex-1 flex flex-col">
-          {activePage.blocks && activePage.blocks.length > 0 ? (
-            <DndContext
-              sensors={sensors}
-              collisionDetection={closestCenter}
-              onDragEnd={handleDragEnd}
-            >
-              <SortableContext
-                items={activePage.blocks.map((b) => b.id)}
-                strategy={verticalListSortingStrategy}
+          {activePage.blocks && activePage.blocks.length > 0 ? (() => {
+            const blocksMap = new Map<string, Block>(activePage.blocks.map((b) => [b.id, b]));
+            const visibleBlocks = activePage.blocks.filter((b) => isBlockVisible(b, blocksMap));
+
+            return (
+              <DndContext
+                sensors={sensors}
+                collisionDetection={closestCenter}
+                onDragEnd={handleDragEnd}
               >
-                {activePage.blocks.map((block, index) => {
-                  const isSelected = selectedBlockId === block.id;
-                  const prevBlock = index > 0 ? activePage.blocks[index - 1] : null;
+                <SortableContext
+                  items={visibleBlocks.map((b) => b.id)}
+                  strategy={verticalListSortingStrategy}
+                >
+                  {visibleBlocks.map((block, index) => {
+                    const isSelected = selectedBlockId === block.id;
+                    const prevBlock = index > 0 ? visibleBlocks[index - 1] : null;
+                    const depth = getBlockDepth(block, blocksMap);
 
-                  const isListType =
-                    block.type === "bulleted-list" ||
-                    block.type === "numbered-list" ||
-                    block.type === "todo";
-                  const isPrevSameType = prevBlock && prevBlock.type === block.type;
+                    const isListType =
+                      block.type === "bulleted-list" ||
+                      block.type === "numbered-list" ||
+                      block.type === "todo";
+                    const isPrevSameType = prevBlock && prevBlock.type === block.type;
 
-                  let marginTopClass = "mt-2.5";
-                  if (index === 0) {
-                    marginTopClass = "mt-0";
-                  } else if (isListType && isPrevSameType) {
-                    marginTopClass = "mt-0";
-                  }
+                    let marginTopClass = "mt-2.5";
+                    if (index === 0) {
+                      marginTopClass = "mt-0";
+                    } else if (isListType && isPrevSameType) {
+                      marginTopClass = "mt-0";
+                    }
 
-                  let paddingYClass = "py-2";
-                  if (isListType) {
-                    paddingYClass = "py-0.5";
-                  }
+                    let paddingYClass = "py-2";
+                    if (isListType) {
+                      paddingYClass = "py-0.5";
+                    }
 
-                  return (
-                    <SortableBlockWrapper
-                      key={block.id}
-                      block={block}
-                      isSelected={isSelected}
-                      paddingYClass={paddingYClass}
-                      marginTopClass={marginTopClass}
-                      onPlusClick={(e) => handlePlusClick(e, block.id)}
-                      onDragClick={(e) => handleDragClick(e, block.id)}
-                    >
-                      {/* Block Content Renderers */}
-                      <div className="flex-1 min-w-0 relative">
-                    {block.type === "paragraph" && (
-                      <div className="relative w-full">
+                    return (
+                      <SortableBlockWrapper
+                        key={block.id}
+                        block={block}
+                        isSelected={isSelected}
+                        paddingYClass={paddingYClass}
+                        marginTopClass={marginTopClass}
+                        onPlusClick={(e) => handlePlusClick(e, block.id)}
+                        onDragClick={(e) => handleDragClick(e, block.id)}
+                      >
+                        {/* Block Content Renderers */}
+                        <div
+                          className={`flex-1 min-w-0 relative ${
+                            depth > 0 ? "pl-3 border-l-2 border-stone-200/70 ml-2" : ""
+                          }`}
+                        >
+                      {block.type === "paragraph" && (
+                        <div className="relative w-full">
+                          <RichTextEditor
+                            id={`block-input-${block.id}`}
+                            value={block.data.text || ""}
+                            onChange={(val) => handleBlockChange(block.id, val)}
+                            onKeyDown={(e) => handleKeyDown(e, block)}
+                            placeholder="Press Enter or start writing, or type '/' for commands..."
+                            className="font-sans text-stone-800 text-[14.5px] leading-relaxed py-0.5"
+                            placeholderClassName="text-stone-300 font-sans text-[14.5px] leading-relaxed py-0.5"
+                            onFocus={() => setSelectedBlockId(block.id)}
+                            isSelected={isSelected}
+                          />
+                          {slashMenuOpen && slashMenuBlockId === block.id && (
+                            <SlashMenu
+                              searchText={slashMenuSearch}
+                              onSelect={handleSelectCommand}
+                              onClose={() => {
+                                setSlashMenuOpen(false);
+                                setSlashMenuBlockId(null);
+                                setSlashMenuSearch("");
+                              }}
+                            />
+                          )}
+                        </div>
+                      )}
+
+                      {block.type === "callout" && (
+                        <div className="flex items-start gap-3 w-full p-3.5 rounded-xl bg-stone-100/80 border border-stone-200/70 my-1 transition-colors hover:bg-stone-100 relative">
+                          <div className="relative shrink-0 pt-0.5 select-none">
+                            <button
+                              type="button"
+                              contentEditable={false}
+                              onMouseDown={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                              }}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setCalloutEmojiPickerBlockId(
+                                  calloutEmojiPickerBlockId === block.id ? null : block.id
+                                );
+                              }}
+                              className="text-xl leading-none p-1 hover:bg-stone-200/70 rounded cursor-pointer select-none transition-transform active:scale-95 flex items-center justify-center"
+                              title="Change callout icon"
+                            >
+                              {block.data.icon || "💡"}
+                            </button>
+
+                            {calloutEmojiPickerBlockId === block.id && (
+                              <div
+                                id={`callout-emoji-picker-${block.id}`}
+                                className="absolute left-0 top-full mt-1.5 z-50 bg-white border border-stone-200 shadow-xl rounded-xl p-2 grid grid-cols-4 gap-1 w-40 select-none animate-in fade-in zoom-in-95 duration-100"
+                              >
+                                {["💡", "ℹ️", "⚠️", "🔥", "📌", "✨", "🎯", "📝", "🚀", "💬", "⭐", "🎉", "⚡", "🛑", "🔔", "❤️"].map((emoji) => (
+                                  <button
+                                    key={emoji}
+                                    type="button"
+                                    onMouseDown={(e) => {
+                                      e.preventDefault();
+                                      e.stopPropagation();
+                                    }}
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      updateBlockData(activePage.id, block.id, { icon: emoji });
+                                      setCalloutEmojiPickerBlockId(null);
+                                      setSelectedBlockId(block.id);
+                                      const inputEl = document.getElementById(`block-input-${block.id}`);
+                                      if (inputEl) {
+                                        inputEl.focus();
+                                      }
+                                    }}
+                                    className="text-lg p-1.5 hover:bg-stone-100 rounded-lg transition-colors flex items-center justify-center cursor-pointer"
+                                  >
+                                    {emoji}
+                                  </button>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+
+                          <RichTextEditor
+                            id={`block-input-${block.id}`}
+                            value={block.data.text || ""}
+                            onChange={(val) => handleBlockChange(block.id, val)}
+                            onKeyDown={(e) => handleKeyDown(e, block)}
+                            placeholder="Callout text..."
+                            className="flex-1 font-sans text-stone-800 text-[14.5px] leading-relaxed py-0.5"
+                            placeholderClassName="text-stone-400 font-sans text-[14.5px] leading-relaxed py-0.5"
+                            onFocus={() => setSelectedBlockId(block.id)}
+                            isSelected={isSelected}
+                          />
+                        </div>
+                      )}
+
+                      {block.type === "heading" && (
                         <RichTextEditor
                           id={`block-input-${block.id}`}
                           value={block.data.text || ""}
                           onChange={(val) => handleBlockChange(block.id, val)}
                           onKeyDown={(e) => handleKeyDown(e, block)}
-                          placeholder="Press Enter or start writing, or type '/' for commands..."
-                          className="font-sans text-stone-800 text-[14.5px] leading-relaxed py-0.5"
-                          placeholderClassName="text-stone-300 font-sans text-[14.5px] leading-relaxed py-0.5"
+                          placeholder={`Heading ${block.data.level || 1}`}
+                          className="font-display font-bold tracking-tight text-stone-900 py-1"
+                          placeholderClassName="text-stone-300 font-display font-bold tracking-tight py-1"
+                          style={{
+                            fontSize: block.data.level === 1 ? "1.65rem" : block.data.level === 3 ? "1.15rem" : "1.35rem"
+                          }}
                           onFocus={() => setSelectedBlockId(block.id)}
                           isSelected={isSelected}
                         />
-                        {slashMenuOpen && slashMenuBlockId === block.id && (
-                          <SlashMenu
-                            searchText={slashMenuSearch}
-                            onSelect={handleSelectCommand}
-                            onClose={() => {
-                              setSlashMenuOpen(false);
-                              setSlashMenuBlockId(null);
-                              setSlashMenuSearch("");
-                            }}
-                          />
-                        )}
-                      </div>
-                    )}
+                      )}
 
-                    {block.type === "heading" && (
-                      <RichTextEditor
-                        id={`block-input-${block.id}`}
-                        value={block.data.text || ""}
-                        onChange={(val) => handleBlockChange(block.id, val)}
-                        onKeyDown={(e) => handleKeyDown(e, block)}
-                        placeholder={`Heading ${block.data.level || 1}`}
-                        className="font-display font-bold tracking-tight text-stone-900 py-1"
-                        placeholderClassName="text-stone-300 font-display font-bold tracking-tight py-1"
-                        style={{
-                          fontSize: block.data.level === 1 ? "1.65rem" : block.data.level === 3 ? "1.15rem" : "1.35rem"
-                        }}
-                        onFocus={() => setSelectedBlockId(block.id)}
-                        isSelected={isSelected}
-                      />
-                    )}
+                      {block.type === "toggle" && (
+                        <div className="flex items-start gap-1 w-full py-0.5">
+                          <button
+                            type="button"
+                            contentEditable={false}
+                            onMouseDown={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                            }}
+                            onClick={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              updateBlockData(activePage.id, block.id, {
+                                collapsed: !block.data.collapsed,
+                              });
+                            }}
+                            className="mt-1 p-0.5 text-stone-400 hover:text-stone-700 hover:bg-stone-100 rounded transition-colors cursor-pointer select-none shrink-0"
+                            title={block.data.collapsed ? "Expand toggle" : "Collapse toggle"}
+                          >
+                            <ChevronRight
+                              className={`h-4 w-4 transition-transform duration-150 ${
+                                block.data.collapsed ? "rotate-0" : "rotate-90"
+                              }`}
+                            />
+                          </button>
+                          <RichTextEditor
+                            id={`block-input-${block.id}`}
+                            value={block.data.text || ""}
+                            onChange={(val) => handleBlockChange(block.id, val)}
+                            onKeyDown={(e) => handleKeyDown(e, block)}
+                            placeholder="Toggle"
+                            className="font-sans font-medium text-stone-800 text-[14.5px] leading-relaxed py-0.5"
+                            placeholderClassName="text-stone-300 font-sans font-medium text-[14.5px] leading-relaxed py-0.5"
+                            onFocus={() => setSelectedBlockId(block.id)}
+                            isSelected={isSelected}
+                          />
+                        </div>
+                      )}
 
                     {block.type === "bulleted-list" && (
                       <div className="flex items-start gap-2.5 w-full py-0.5">
@@ -974,24 +1284,71 @@ export const EditorArea: React.FC = () => {
                       </div>
                     )}
 
-                    {block.type === "code" && (
-                      <div className="relative w-full rounded-lg border border-stone-200 bg-stone-50/50 font-mono p-3">
-                        <div className="absolute top-2 right-2 text-[10px] text-stone-400 font-semibold select-none bg-stone-100/80 px-1.5 py-0.5 rounded uppercase font-sans">
-                          {block.data.language || "javascript"}
-                        </div>
-                        <RichTextEditor
-                          id={`block-input-${block.id}`}
-                          value={block.data.text || ""}
-                          onChange={(val) => handleBlockChange(block.id, val)}
-                          onKeyDown={(e) => handleKeyDown(e, block)}
-                          placeholder="// Write some code here..."
-                          className="text-stone-800 text-[12.5px] leading-relaxed font-mono py-1"
-                          placeholderClassName="text-stone-300 font-mono text-[12.5px] leading-relaxed py-1"
-                          onFocus={() => setSelectedBlockId(block.id)}
+                    {block.type === "code" && (() => {
+                      const blocksMap = new Map<string, Block>(activePage.blocks.map((b) => [b.id, b]));
+                      const visibleBlocks = activePage.blocks.filter((b) => isBlockVisible(b, blocksMap));
+                      const currentIndex = visibleBlocks.findIndex((b) => b.id === block.id);
+                      const prevBlock = currentIndex > 0 ? visibleBlocks[currentIndex - 1] : null;
+                      const nextBlock = currentIndex < visibleBlocks.length - 1 ? visibleBlocks[currentIndex + 1] : null;
+
+                      return (
+                        <CodeBlock
+                          block={block}
+                          activePageId={activePage.id}
+                          updateBlockData={updateBlockData}
+                          updateBlockType={updateBlockType}
+                          setSelectedBlockId={setSelectedBlockId}
                           isSelected={isSelected}
+                          onNavigateUp={() => {
+                            if (prevBlock) {
+                              setSelectedBlockId(prevBlock.id);
+                              const el = document.getElementById(`block-input-${prevBlock.id}`);
+                              if (el) el.focus();
+                            }
+                          }}
+                          onNavigateDown={() => {
+                            if (nextBlock) {
+                              setSelectedBlockId(nextBlock.id);
+                              const el = document.getElementById(`block-input-${nextBlock.id}`);
+                              if (el) el.focus();
+                            }
+                          }}
                         />
-                      </div>
-                    )}
+                      );
+                    })()}
+
+                    {block.type === "table" && (() => {
+                      const blocksMap = new Map<string, Block>(activePage.blocks.map((b) => [b.id, b]));
+                      const visibleBlocks = activePage.blocks.filter((b) => isBlockVisible(b, blocksMap));
+                      const currentIndex = visibleBlocks.findIndex((b) => b.id === block.id);
+                      const prevBlock = currentIndex > 0 ? visibleBlocks[currentIndex - 1] : null;
+                      const nextBlock = currentIndex < visibleBlocks.length - 1 ? visibleBlocks[currentIndex + 1] : null;
+
+                      return (
+                        <TableBlock
+                          block={block}
+                          activePageId={activePage.id}
+                          updateBlockData={updateBlockData}
+                          updateBlockType={updateBlockType}
+                          setSelectedBlockId={setSelectedBlockId}
+                          isSelected={isSelected}
+                          onNavigateUp={() => {
+                            if (prevBlock) {
+                              setSelectedBlockId(prevBlock.id);
+                              const el = document.getElementById(`block-input-${prevBlock.id}`);
+                              if (el) el.focus();
+                            }
+                          }}
+                          onNavigateDown={() => {
+                            if (nextBlock) {
+                              setSelectedBlockId(nextBlock.id);
+                              const el = document.getElementById(`block-input-${nextBlock.id}`);
+                              if (el) el.focus();
+                            }
+                          }}
+                        />
+                      );
+                    })()}
 
                     {block.type === "divider" && (
                       <div
@@ -1113,7 +1470,8 @@ export const EditorArea: React.FC = () => {
             })}
           </SortableContext>
         </DndContext>
-          ) : (
+            );
+          })() : (
             <div className="text-center py-12 border-2 border-dashed border-stone-200 rounded-xl space-y-2 select-none">
               <Sparkles className="h-6 w-6 mx-auto text-stone-300 animate-pulse" />
               <p className="text-xs text-stone-400 font-sans">This page is completely empty. Create some blocks below!</p>
@@ -1151,6 +1509,28 @@ export const EditorArea: React.FC = () => {
               >
                 <span className="text-xs font-bold text-stone-400 font-display">H</span>
                 <span>+ Heading</span>
+              </button>
+              <button
+                id="bottom-insert-toggle-btn"
+                onClick={() => {
+                  const newBlockId = addBlock(activePage.id, "toggle", "", selectedBlockId, { collapsed: false });
+                  setSelectedBlockId(newBlockId);
+                }}
+                className="flex-1 min-w-[120px] flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg border border-stone-200/60 bg-stone-50 hover:bg-stone-100 text-xs font-semibold text-stone-600 hover:text-stone-900 cursor-pointer transition-all active:scale-95"
+              >
+                <ChevronRight className="h-3.5 w-3.5 text-stone-400" />
+                <span>+ Toggle</span>
+              </button>
+              <button
+                id="bottom-insert-callout-btn"
+                onClick={() => {
+                  const newBlockId = addBlock(activePage.id, "callout", "", selectedBlockId, { icon: "💡" });
+                  setSelectedBlockId(newBlockId);
+                }}
+                className="flex-1 min-w-[120px] flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg border border-stone-200/60 bg-stone-50 hover:bg-stone-100 text-xs font-semibold text-stone-600 hover:text-stone-900 cursor-pointer transition-all active:scale-95"
+              >
+                <Lightbulb className="h-3.5 w-3.5 text-stone-400" />
+                <span>+ Callout</span>
               </button>
               <button
                 id="bottom-insert-image-btn"

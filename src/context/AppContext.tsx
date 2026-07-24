@@ -312,32 +312,69 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     );
   };
 
+const getDescendantIds = (targetId: string, blocks: Block[]): string[] => {
+  const children = blocks.filter((b) => b.data?.parentId === targetId);
+  let ids: string[] = [];
+  for (const child of children) {
+    ids.push(child.id);
+    ids = ids.concat(getDescendantIds(child.id, blocks));
+  }
+  return ids;
+};
+
+const getLastSubtreeBlockId = (targetId: string, blocks: Block[]): string => {
+  const descendantIds = new Set(getDescendantIds(targetId, blocks));
+  let lastId = targetId;
+  for (let i = 0; i < blocks.length; i++) {
+    if (blocks[i].id === targetId || descendantIds.has(blocks[i].id)) {
+      lastId = blocks[i].id;
+    }
+  }
+  return lastId;
+};
+
   const addBlock = (
     pageId: string,
     type: BlockType,
     text = "",
     insertAfterBlockId?: string | null,
-    extraData?: Partial<Block["data"]>
+    extraData?: Partial<Block["data"]> & { insertDirectlyAfter?: boolean }
   ) => {
     const newBlockId = `block-${Math.random().toString(36).substr(2, 9)}`;
-    const newBlock: Block = {
-      id: newBlockId,
-      type,
-      data: {
-        text,
-        level: type === "heading" ? 2 : undefined,
-        checked: type === "todo" ? false : undefined,
-        ...extraData
-      }
-    };
 
     setPages((prev) =>
       prev.map((page) => {
         if (page.id !== pageId) return page;
 
+        let targetParentId: string | null = null;
+        if (extraData?.parentId !== undefined) {
+          targetParentId = extraData.parentId;
+        } else if (insertAfterBlockId) {
+          const targetBlock = page.blocks.find((b) => b.id === insertAfterBlockId);
+          targetParentId = targetBlock?.data?.parentId || null;
+        }
+
+        const newExtraData = { ...extraData };
+        delete (newExtraData as any).insertDirectlyAfter;
+
+        const newBlock: Block = {
+          id: newBlockId,
+          type,
+          data: {
+            text,
+            level: type === "heading" ? 2 : undefined,
+            checked: type === "todo" ? false : undefined,
+            ...newExtraData,
+            parentId: targetParentId,
+          }
+        };
+
         let newBlocks = [...page.blocks];
         if (insertAfterBlockId) {
-          const idx = newBlocks.findIndex((b) => b.id === insertAfterBlockId);
+          const targetId = extraData?.insertDirectlyAfter
+            ? insertAfterBlockId
+            : getLastSubtreeBlockId(insertAfterBlockId, newBlocks);
+          const idx = newBlocks.findIndex((b) => b.id === targetId);
           if (idx !== -1) {
             newBlocks.splice(idx + 1, 0, newBlock);
           } else {
@@ -438,13 +475,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       prev.map((page) => {
         if (page.id !== pageId) return page;
 
-        // If it's a child-page block, we should keep the subpage itself but just remove the block from the flow,
-        // or optionally delete the page. According to standard Notion, deleting the page link block can delete the subpage,
-        // or just sever the link. To be safe & complete, if a child-page block is deleted, we also delete the page itself.
-        const blockToDelete = page.blocks.find((b) => b.id === blockId);
-        
-        // Return page with updated blocks
-        const nextBlocks = page.blocks.filter((block) => block.id !== blockId);
+        const descendantIds = getDescendantIds(blockId, page.blocks);
+        const idsToDelete = new Set([blockId, ...descendantIds]);
+
+        const nextBlocks = page.blocks.filter((block) => !idsToDelete.has(block.id));
         return {
           ...page,
           blocks: nextBlocks,
@@ -472,18 +506,35 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       prev.map((page) => {
         if (page.id !== pageId) return page;
 
-        const oldIndex = page.blocks.findIndex((block) => block.id === activeId);
-        const newIndex = page.blocks.findIndex((block) => block.id === overId);
+        const descendantIds = new Set(getDescendantIds(activeId, page.blocks));
+        const subtreeIds = new Set([activeId, ...descendantIds]);
 
-        if (oldIndex === -1 || newIndex === -1) return page;
+        const subtreeBlocks: Block[] = [];
+        const remainingBlocks: Block[] = [];
 
-        const newBlocks = [...page.blocks];
-        const [removed] = newBlocks.splice(oldIndex, 1);
-        newBlocks.splice(newIndex, 0, removed);
+        for (const block of page.blocks) {
+          if (subtreeIds.has(block.id)) {
+            subtreeBlocks.push(block);
+          } else {
+            remainingBlocks.push(block);
+          }
+        }
+
+        const overIndexInRemaining = remainingBlocks.findIndex((b) => b.id === overId);
+        if (overIndexInRemaining === -1) return page;
+
+        const oldIndex = page.blocks.findIndex((b) => b.id === activeId);
+        const overIndexInOriginal = page.blocks.findIndex((b) => b.id === overId);
+
+        const insertIndex = overIndexInOriginal > oldIndex 
+          ? overIndexInRemaining + 1 
+          : overIndexInRemaining;
+
+        remainingBlocks.splice(insertIndex, 0, ...subtreeBlocks);
 
         return {
           ...page,
-          blocks: newBlocks,
+          blocks: remainingBlocks,
           updatedAt: Date.now(),
         };
       })
@@ -499,16 +550,41 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         const targetIndex = page.blocks.findIndex((b) => b.id === blockId);
         if (targetIndex === -1) return page;
 
-        const originalBlock = page.blocks[targetIndex];
+        const descendantIds = new Set(getDescendantIds(blockId, page.blocks));
+        const idMap = new Map<string, string>();
+
         newBlockId = `block-${Math.random().toString(36).substr(2, 9)}`;
-        const duplicatedBlock: Block = {
-          id: newBlockId,
-          type: originalBlock.type,
-          data: JSON.parse(JSON.stringify(originalBlock.data)),
-        };
+        idMap.set(blockId, newBlockId);
+
+        for (const id of descendantIds) {
+          idMap.set(id, `block-${Math.random().toString(36).substr(2, 9)}`);
+        }
+
+        const blocksToDuplicate: Block[] = [];
+        for (let i = targetIndex; i < page.blocks.length; i++) {
+          const b = page.blocks[i];
+          if (b.id === blockId || descendantIds.has(b.id)) {
+            blocksToDuplicate.push(b);
+          } else if (blocksToDuplicate.length > 0 && !b.data?.parentId) {
+            break;
+          }
+        }
+
+        const duplicatedBlocks: Block[] = blocksToDuplicate.map((b) => {
+          const newId = idMap.get(b.id)!;
+          const newData = JSON.parse(JSON.stringify(b.data));
+          if (newData.parentId && idMap.has(newData.parentId)) {
+            newData.parentId = idMap.get(newData.parentId);
+          }
+          return {
+            id: newId,
+            type: b.type,
+            data: newData,
+          };
+        });
 
         const newBlocks = [...page.blocks];
-        newBlocks.splice(targetIndex + 1, 0, duplicatedBlock);
+        newBlocks.splice(targetIndex + blocksToDuplicate.length, 0, ...duplicatedBlocks);
 
         return {
           ...page,
