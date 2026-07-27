@@ -98,7 +98,6 @@ export const TableBlock: React.FC<TableBlockProps> = ({
 
     focusTarget();
     requestAnimationFrame(focusTarget);
-    setTimeout(focusTarget, 50);
   };
 
   const handleCellChange = (rIdx: number, cIdx: number, val: string) => {
@@ -497,7 +496,7 @@ export const TableBlock: React.FC<TableBlockProps> = ({
                           }}
                           onKeyDown={(e) => handleKeyDown(e, rIdx, cIdx)}
                           onFocus={() => {
-                            setSelectedBlockId(block.id);
+                            setSelectedBlockId(null);
                             setActiveCell({ r: rIdx, c: cIdx });
                           }}
                           placeholder=""

@@ -427,7 +427,7 @@ export const CodeBlock: React.FC<CodeBlockProps> = ({
           onClick={saveSelection}
           onKeyUp={saveSelection}
           onFocus={() => {
-            setSelectedBlockId(block.id);
+            setSelectedBlockId(null);
             if (textareaRef.current && lastSelectionRef.current) {
               const { start, end } = lastSelectionRef.current;
               textareaRef.current.setSelectionRange(start, end);

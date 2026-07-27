@@ -3,6 +3,7 @@ import { AppProvider } from "./context/AppContext";
 import { Sidebar } from "./components/Sidebar";
 import { Toolbar } from "./components/Toolbar";
 import { EditorArea } from "./components/EditorArea";
+import { SearchModal } from "./components/SearchModal";
 
 export default function App() {
   return (
@@ -19,6 +20,9 @@ export default function App() {
           {/* Active page document editor or empty state prompt */}
           <EditorArea />
         </div>
+
+        {/* Global Search Dialog Modal */}
+        <SearchModal />
       </div>
     </AppProvider>
   );

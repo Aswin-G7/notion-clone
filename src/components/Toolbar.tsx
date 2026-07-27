@@ -1,7 +1,7 @@
 import React from "react";
 import { useApp } from "../context/AppContext";
 import { Page } from "../types";
-import { Menu, Star, Trash2, ChevronRight, CheckCircle2, MoreHorizontal } from "lucide-react";
+import { Menu, Star, Trash2, ChevronRight, CheckCircle2, Search } from "lucide-react";
 
 export const Toolbar: React.FC = () => {
   const {
@@ -12,6 +12,7 @@ export const Toolbar: React.FC = () => {
     updatePage,
     deletePage,
     setActivePageId,
+    setIsSearchOpen,
   } = useApp();
 
   if (!activePage) {
@@ -102,6 +103,20 @@ export const Toolbar: React.FC = () => {
 
       {/* Right items (Status & Actions) */}
       <div className="flex items-center gap-2 shrink-0">
+        {/* Global Search Button */}
+        <button
+          id="toolbar-search-btn"
+          onClick={() => setIsSearchOpen(true)}
+          className="flex items-center gap-1.5 px-2 py-1 rounded text-stone-500 hover:text-stone-800 hover:bg-stone-100 text-xs font-medium transition-colors"
+          title="Search Workspace (Ctrl+P)"
+        >
+          <Search className="h-3.5 w-3.5 text-stone-400" />
+          <span className="hidden sm:inline font-sans">Search</span>
+          <kbd className="hidden md:inline-flex items-center text-[10px] text-stone-400 bg-stone-100 border border-stone-200 px-1 rounded font-mono">
+            ⌘P
+          </kbd>
+        </button>
+
         {/* Autosave badge */}
         <span className="hidden sm:inline-flex items-center gap-1 text-[11px] font-sans text-stone-400 font-medium">
           <CheckCircle2 className="h-3 w-3 text-emerald-500" />

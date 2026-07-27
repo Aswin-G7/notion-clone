@@ -5,6 +5,7 @@ interface BlockToolbarProps {
   blockId: string;
   onPlusClick: (e: React.MouseEvent) => void;
   onDragClick: (e: React.MouseEvent) => void;
+  onContextMenu?: (e: React.MouseEvent) => void;
   dragHandleListeners?: any;
   dragHandleAttributes?: any;
 }
@@ -13,6 +14,7 @@ export const BlockToolbar: React.FC<BlockToolbarProps> = ({
   blockId,
   onPlusClick,
   onDragClick,
+  onContextMenu,
   dragHandleListeners,
   dragHandleAttributes,
 }) => {
@@ -37,14 +39,17 @@ export const BlockToolbar: React.FC<BlockToolbarProps> = ({
         id={`block-toolbar-drag-${blockId}`}
         onClick={onDragClick}
         onContextMenu={(e) => {
-          e.preventDefault();
-          onDragClick(e);
+          if (onContextMenu) {
+            e.preventDefault();
+            e.stopPropagation();
+            onContextMenu(e);
+          }
         }}
         type="button"
         {...(dragHandleListeners || {})}
         {...(dragHandleAttributes || {})}
         className="w-5 h-6 flex items-center justify-center text-stone-300 hover:text-stone-700 hover:bg-stone-100 rounded transition-colors cursor-grab active:cursor-grabbing"
-        title="Drag to reorder / Click for menu"
+        title="Drag to reorder / Click to select block"
       >
         <GripVertical className="h-3.5 w-3.5" />
       </button>

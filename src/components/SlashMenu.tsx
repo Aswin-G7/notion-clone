@@ -15,6 +15,7 @@ import {
   ChevronRight,
   Lightbulb,
   Table,
+  Sparkles,
 } from "lucide-react";
 
 export interface CommandItem {
@@ -120,6 +121,12 @@ export const COMMANDS: CommandItem[] = [
     label: "Inline Page",
     description: "Create a subpage inside this page.",
     icon: <FilePlus className="h-4 w-4 text-stone-500" />,
+  },
+  {
+    id: "template",
+    label: "Templates",
+    description: "Apply a pre-configured page template.",
+    icon: <Sparkles className="h-4 w-4 text-amber-500" />,
   },
 ];
 

@@ -155,26 +155,6 @@ function SyncValuePlugin({ value, lastHtmlRef }: SyncValuePluginProps) {
   return null;
 }
 
-// Plugin to manage reactive focus and cursor placement
-function FocusPlugin({ isSelected }: { isSelected: boolean }) {
-  const [editor] = useLexicalComposerContext();
-
-  useEffect(() => {
-    if (isSelected) {
-      editor.focus();
-      editor.update(() => {
-        const selection = $getSelection();
-        if (!selection || !$isRangeSelection(selection)) {
-          const root = $getRoot();
-          root.selectEnd();
-        }
-      });
-    }
-  }, [isSelected, editor]);
-
-  return null;
-}
-
 // Custom plugin to handle keyboard shortcuts, focus, and block-level key intercepts
 interface ShortcutsPluginProps {
   onKeyDown: (e: any) => void;
@@ -815,7 +795,6 @@ export const RichTextEditor: React.FC<RichTextEditorProps> = ({
         />
         <LinkPlugin />
         <SyncValuePlugin value={value} lastHtmlRef={lastHtmlRef} />
-        <FocusPlugin isSelected={isSelected} />
         <ShortcutsPlugin onKeyDown={onKeyDown} onFocus={onFocus} />
         <FloatingToolbarPlugin />
       </div>

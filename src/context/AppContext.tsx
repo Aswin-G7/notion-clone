@@ -1,5 +1,14 @@
 import React, { createContext, useContext, useState, useEffect } from "react";
-import { Page, Block, BlockType } from "../types";
+import { Page, Block, BlockType, ClipboardBlockData } from "../types";
+import { getTemplateById, instantiateTemplate } from "../templates/templateRegistry";
+import { searchService } from "../services/SearchService";
+
+export interface SearchNavigationTarget {
+  pageId: string;
+  blockId: string | null;
+  rawMatchStart?: number;
+  rawMatchEnd?: number;
+}
 
 interface AppContextType {
   pages: Page[];
@@ -7,10 +16,14 @@ interface AppContextType {
   activePage: Page | null;
   sidebarOpen: boolean;
   selectedBlockId: string | null;
+  focusToken: number;
+  triggerPageFocus: () => void;
   setSelectedBlockId: (id: string | null) => void;
   setSidebarOpen: (open: boolean) => void;
   setActivePageId: (id: string | null) => void;
   createPage: (parentId?: string | null, insertAfterBlockId?: string | null) => string;
+  createPageFromTemplate: (templateId: string, parentId?: string | null) => string;
+  applyTemplateToPage: (pageId: string, templateId: string) => void;
   deletePage: (id: string) => void;
   updatePage: (id: string, updates: Partial<Page>) => void;
   addBlock: (
@@ -35,6 +48,23 @@ interface AppContextType {
   deleteBlock: (pageId: string, blockId: string) => void;
   reorderBlocks: (pageId: string, activeId: string, overId: string) => void;
   duplicateBlock: (pageId: string, blockId: string) => string | null;
+  blockClipboard: ClipboardBlockData | null;
+  setBlockClipboard: (data: ClipboardBlockData | null) => void;
+  copyBlock: (pageId: string, blockId: string) => void;
+  cutBlock: (pageId: string, blockId: string) => string | null;
+  pasteBlock: (pageId: string, targetBlockId: string) => string | null;
+  isSearchOpen: boolean;
+  setIsSearchOpen: React.Dispatch<React.SetStateAction<boolean>>;
+  highlightedBlockId: string | null;
+  setHighlightedBlockId: React.Dispatch<React.SetStateAction<string | null>>;
+  pendingSearchTarget: SearchNavigationTarget | null;
+  setPendingSearchTarget: React.Dispatch<React.SetStateAction<SearchNavigationTarget | null>>;
+  navigateToResult: (
+    pageId: string,
+    blockId: string | null,
+    rawMatchStart?: number,
+    rawMatchEnd?: number
+  ) => void;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -179,6 +209,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [selectedBlockId, setSelectedBlockId] = useState<string | null>(null);
+  const [focusToken, setFocusToken] = useState<number>(0);
+
+  const triggerPageFocus = () => setFocusToken((prev) => prev + 1);
 
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(pages));
@@ -187,6 +220,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const setActivePageId = (id: string | null) => {
     setActivePageIdState(id);
     setSelectedBlockId(null);
+    triggerPageFocus();
     if (id) {
       localStorage.setItem(ACTIVE_PAGE_KEY, id);
     } else {
@@ -257,6 +291,73 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     setActivePageId(newId);
     return newId;
+  };
+
+  const createPageFromTemplate = (templateId: string, parentId: string | null = null): string => {
+    const template = getTemplateById(templateId) || getTemplateById("empty");
+    if (!template) return createPage(parentId);
+
+    const newPage = instantiateTemplate(template, { parentId });
+
+    setPages((prev) => {
+      let updatedPages = [...prev, newPage];
+
+      if (parentId) {
+        updatedPages = updatedPages.map((page) => {
+          if (page.id === parentId) {
+            const currentChildren = page.children || [];
+            const newChildren = currentChildren.includes(newPage.id)
+              ? currentChildren
+              : [...currentChildren, newPage.id];
+
+            const childBlock: Block = {
+              id: `block-${Math.random().toString(36).substr(2, 9)}`,
+              type: "child-page",
+              data: { pageId: newPage.id },
+            };
+
+            return {
+              ...page,
+              children: newChildren,
+              blocks: [...page.blocks, childBlock],
+              updatedAt: Date.now(),
+            };
+          }
+          return page;
+        });
+      }
+      return updatedPages;
+    });
+
+    setActivePageId(newPage.id);
+    return newPage.id;
+  };
+
+  const applyTemplateToPage = (pageId: string, templateId: string) => {
+    const template = getTemplateById(templateId);
+    if (!template) return;
+
+    const freshPage = instantiateTemplate(template);
+
+    setPages((prev) =>
+      prev.map((p) => {
+        if (p.id === pageId) {
+          return {
+            ...p,
+            title:
+              p.title === "Untitled Page" || p.title === "Untitled" || p.title.trim() === ""
+                ? template.defaultTitle
+                : p.title,
+            icon: template.icon || p.icon,
+            coverImage: template.coverImage || p.coverImage,
+            blocks: freshPage.blocks,
+            updatedAt: Date.now(),
+          };
+        }
+        return p;
+      })
+    );
+    triggerPageFocus();
   };
 
   const deletePage = (id: string) => {
@@ -475,14 +576,30 @@ const getLastSubtreeBlockId = (targetId: string, blocks: Block[]): string => {
       prev.map((page) => {
         if (page.id !== pageId) return page;
 
-        const descendantIds = getDescendantIds(blockId, page.blocks);
-        const idsToDelete = new Set([blockId, ...descendantIds]);
+        const targetBlock = page.blocks.find((b) => b.id === blockId);
+        if (!targetBlock) return page;
 
-        const nextBlocks = page.blocks.filter((block) => !idsToDelete.has(block.id));
+        const targetParentId = targetBlock.data?.parentId || null;
+
+        const nextBlocks = page.blocks
+          .filter((block) => block.id !== blockId)
+          .map((block) => {
+            if (block.data?.parentId === blockId) {
+              return {
+                ...block,
+                data: {
+                  ...block.data,
+                  parentId: targetParentId,
+                },
+              };
+            }
+            return block;
+          });
+
         return {
           ...page,
           blocks: nextBlocks,
-          updatedAt: Date.now()
+          updatedAt: Date.now(),
         };
       })
     );
@@ -542,27 +659,32 @@ const getLastSubtreeBlockId = (targetId: string, blocks: Block[]): string => {
   };
 
   const duplicateBlock = (pageId: string, blockId: string): string | null => {
-    let newBlockId: string | null = null;
+    const page = pages.find((p) => p.id === pageId);
+    if (!page) return null;
+
+    const targetIndex = page.blocks.findIndex((b) => b.id === blockId);
+    if (targetIndex === -1) return null;
+
+    const descendantIds = new Set(getDescendantIds(blockId, page.blocks));
+    const idMap = new Map<string, string>();
+
+    const newBlockId = `block-${Math.random().toString(36).substr(2, 9)}`;
+    idMap.set(blockId, newBlockId);
+
+    for (const id of descendantIds) {
+      idMap.set(id, `block-${Math.random().toString(36).substr(2, 9)}`);
+    }
+
     setPages((prev) =>
-      prev.map((page) => {
-        if (page.id !== pageId) return page;
+      prev.map((p) => {
+        if (p.id !== pageId) return p;
 
-        const targetIndex = page.blocks.findIndex((b) => b.id === blockId);
-        if (targetIndex === -1) return page;
-
-        const descendantIds = new Set(getDescendantIds(blockId, page.blocks));
-        const idMap = new Map<string, string>();
-
-        newBlockId = `block-${Math.random().toString(36).substr(2, 9)}`;
-        idMap.set(blockId, newBlockId);
-
-        for (const id of descendantIds) {
-          idMap.set(id, `block-${Math.random().toString(36).substr(2, 9)}`);
-        }
+        const idx = p.blocks.findIndex((b) => b.id === blockId);
+        if (idx === -1) return p;
 
         const blocksToDuplicate: Block[] = [];
-        for (let i = targetIndex; i < page.blocks.length; i++) {
-          const b = page.blocks[i];
+        for (let i = idx; i < p.blocks.length; i++) {
+          const b = p.blocks[i];
           if (b.id === blockId || descendantIds.has(b.id)) {
             blocksToDuplicate.push(b);
           } else if (blocksToDuplicate.length > 0 && !b.data?.parentId) {
@@ -583,8 +705,119 @@ const getLastSubtreeBlockId = (targetId: string, blocks: Block[]): string => {
           };
         });
 
+        const newBlocks = [...p.blocks];
+        newBlocks.splice(idx + blocksToDuplicate.length, 0, ...duplicatedBlocks);
+
+        return {
+          ...p,
+          blocks: newBlocks,
+          updatedAt: Date.now(),
+        };
+      })
+    );
+
+    return newBlockId;
+  };
+
+  const [blockClipboard, setBlockClipboard] = useState<ClipboardBlockData | null>(null);
+
+  const copyBlock = (pageId: string, blockId: string) => {
+    const page = pages.find((p) => p.id === pageId);
+    if (!page) return;
+
+    const rootBlock = page.blocks.find((b) => b.id === blockId);
+    if (!rootBlock) return;
+
+    const descendantIds = new Set(getDescendantIds(blockId, page.blocks));
+    const childBlocks = page.blocks.filter((b) => descendantIds.has(b.id));
+
+    setBlockClipboard({
+      rootBlock: JSON.parse(JSON.stringify(rootBlock)),
+      childBlocks: JSON.parse(JSON.stringify(childBlocks)),
+    });
+  };
+
+  const cutBlock = (pageId: string, blockId: string): string | null => {
+    const page = pages.find((p) => p.id === pageId);
+    if (!page) return null;
+
+    const rootBlock = page.blocks.find((b) => b.id === blockId);
+    if (!rootBlock) return null;
+
+    copyBlock(pageId, blockId);
+
+    const blocksMap = new Map<string, Block>(page.blocks.map((b) => [b.id, b]));
+    const isVisible = (b: Block): boolean => {
+      let currParentId = b.data?.parentId;
+      while (currParentId) {
+        const parent = blocksMap.get(currParentId);
+        if (!parent) break;
+        if (parent.type === "toggle" && parent.data?.collapsed) return false;
+        currParentId = parent.data?.parentId;
+      }
+      return true;
+    };
+
+    const visibleBlocks = page.blocks.filter(isVisible);
+    const visIdx = visibleBlocks.findIndex((b) => b.id === blockId);
+
+    let adjacentBlockId: string | null = null;
+    if (visIdx < visibleBlocks.length - 1) {
+      adjacentBlockId = visibleBlocks[visIdx + 1].id;
+    } else if (visIdx > 0) {
+      adjacentBlockId = visibleBlocks[visIdx - 1].id;
+    }
+
+    deleteBlock(pageId, blockId);
+    return adjacentBlockId;
+  };
+
+  const pasteBlock = (pageId: string, targetBlockId: string): string | null => {
+    if (!blockClipboard) return null;
+
+    const newRootId = `block-${Math.random().toString(36).substr(2, 9)}`;
+    const idMap = new Map<string, string>();
+    idMap.set(blockClipboard.rootBlock.id, newRootId);
+
+    for (const child of blockClipboard.childBlocks) {
+      idMap.set(child.id, `block-${Math.random().toString(36).substr(2, 9)}`);
+    }
+
+    setPages((prev) =>
+      prev.map((page) => {
+        if (page.id !== pageId) return page;
+
+        const targetBlock = page.blocks.find((b) => b.id === targetBlockId);
+        if (!targetBlock) return page;
+
+        const lastSubtreeId = getLastSubtreeBlockId(targetBlockId, page.blocks);
+        const targetIndex = page.blocks.findIndex((b) => b.id === lastSubtreeId);
+        if (targetIndex === -1) return page;
+
+        const duplicatedRootBlock: Block = {
+          id: newRootId,
+          type: blockClipboard.rootBlock.type,
+          data: {
+            ...JSON.parse(JSON.stringify(blockClipboard.rootBlock.data)),
+            parentId: targetBlock.data?.parentId || null,
+          },
+        };
+
+        const duplicatedChildBlocks: Block[] = blockClipboard.childBlocks.map((child) => {
+          const newChildId = idMap.get(child.id)!;
+          const newChildData = JSON.parse(JSON.stringify(child.data));
+          if (newChildData.parentId && idMap.has(newChildData.parentId)) {
+            newChildData.parentId = idMap.get(newChildData.parentId);
+          }
+          return {
+            id: newChildId,
+            type: child.type,
+            data: newChildData,
+          };
+        });
+
         const newBlocks = [...page.blocks];
-        newBlocks.splice(targetIndex + blocksToDuplicate.length, 0, ...duplicatedBlocks);
+        newBlocks.splice(targetIndex + 1, 0, duplicatedRootBlock, ...duplicatedChildBlocks);
 
         return {
           ...page,
@@ -593,10 +826,56 @@ const getLastSubtreeBlockId = (targetId: string, blocks: Block[]): string => {
         };
       })
     );
-    if (newBlockId) {
-      setSelectedBlockId(newBlockId);
+
+    return newRootId;
+  };
+
+  // Search State & Navigation Logic
+  const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const [highlightedBlockId, setHighlightedBlockId] = useState<string | null>(null);
+  const [pendingSearchTarget, setPendingSearchTarget] = useState<SearchNavigationTarget | null>(null);
+
+  // Synchronize search index whenever pages change
+  useEffect(() => {
+    searchService.buildIndex(pages);
+  }, [pages]);
+
+  // Global Keyboard Shortcut: Ctrl+P / Cmd+P or Ctrl+K / Cmd+K
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const isCmdOrCtrl = e.metaKey || e.ctrlKey;
+      if (isCmdOrCtrl && (e.key.toLowerCase() === "p" || e.key.toLowerCase() === "k")) {
+        e.preventDefault();
+        setIsSearchOpen((prev) => !prev);
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, []);
+
+  const navigateToResult = (
+    pageId: string,
+    blockId: string | null,
+    rawMatchStart?: number,
+    rawMatchEnd?: number
+  ) => {
+    setIsSearchOpen(false);
+    setActivePageId(pageId);
+
+    setPendingSearchTarget({
+      pageId,
+      blockId,
+      rawMatchStart,
+      rawMatchEnd,
+    });
+
+    if (blockId) {
+      setHighlightedBlockId(blockId);
+      setSelectedBlockId(blockId);
+    } else {
+      setHighlightedBlockId(null);
     }
-    return newBlockId;
   };
 
   const activePage = pages.find((page) => page.id === activePageId) || null;
@@ -609,10 +888,14 @@ const getLastSubtreeBlockId = (targetId: string, blocks: Block[]): string => {
         activePage,
         sidebarOpen,
         selectedBlockId,
+        focusToken,
+        triggerPageFocus,
         setSelectedBlockId,
         setSidebarOpen,
         setActivePageId,
         createPage,
+        createPageFromTemplate,
+        applyTemplateToPage,
         deletePage,
         updatePage,
         addBlock,
@@ -622,6 +905,18 @@ const getLastSubtreeBlockId = (targetId: string, blocks: Block[]): string => {
         deleteBlock,
         reorderBlocks,
         duplicateBlock,
+        blockClipboard,
+        setBlockClipboard,
+        copyBlock,
+        cutBlock,
+        pasteBlock,
+        isSearchOpen,
+        setIsSearchOpen,
+        highlightedBlockId,
+        setHighlightedBlockId,
+        pendingSearchTarget,
+        setPendingSearchTarget,
+        navigateToResult,
       }}
     >
       {children}

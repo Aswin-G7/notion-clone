@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { useApp } from "../context/AppContext";
 import { SidebarItem } from "./SidebarItem";
+import { TemplateGalleryModal } from "./TemplateGalleryModal";
 import {
   Plus,
   Search,
@@ -12,7 +13,9 @@ import {
   FolderOpen,
   X,
   FilePlus,
-  Check
+  Check,
+  LayoutGrid,
+  Sparkles
 } from "lucide-react";
 
 export const Sidebar: React.FC = () => {
@@ -25,9 +28,10 @@ export const Sidebar: React.FC = () => {
     deletePage,
     updatePage,
     setActivePageId,
+    setIsSearchOpen,
   } = useApp();
 
-  const [searchQuery, setSearchQuery] = useState("");
+  const [templateModalOpen, setTemplateModalOpen] = useState(false);
 
   const handleSelectPage = (id: string) => {
     setActivePageId(id);
@@ -50,14 +54,6 @@ export const Sidebar: React.FC = () => {
 
   // Get favorite pages
   const favoritePages = pages.filter((page) => page.isFavorite);
-
-  // Filtered pages for search results
-  const filteredPages = searchQuery.trim() !== ""
-    ? pages.filter((page) =>
-        page.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        page.content.toLowerCase().includes(searchQuery.toLowerCase())
-      )
-    : [];
 
   return (
     <>
@@ -116,27 +112,21 @@ export const Sidebar: React.FC = () => {
 
         {/* Quick Utilities Block */}
         <div className="px-3 py-1 space-y-0.5 shrink-0">
-          {/* Search bar input */}
-          <div className="relative">
-            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-stone-400" />
-            <input
-              id="sidebar-search-input"
-              type="text"
-              placeholder="Search page..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-8 pr-7 py-1 bg-stone-200/40 border border-transparent hover:bg-stone-200/60 focus:bg-white focus:border-stone-300 focus:outline-none rounded text-xs text-stone-700 transition-all font-sans"
-            />
-            {searchQuery && (
-              <button
-                id="clear-search-btn"
-                onClick={() => setSearchQuery("")}
-                className="absolute right-2 top-1/2 -translate-y-1/2 text-stone-400 hover:text-stone-600 p-0.5 rounded"
-              >
-                <X className="h-3 w-3" />
-              </button>
-            )}
-          </div>
+          {/* Global Search Button Trigger */}
+          <button
+            id="sidebar-search-btn"
+            onClick={() => setIsSearchOpen(true)}
+            className="w-full flex items-center justify-between px-2.5 py-1.5 rounded-md text-stone-500 hover:text-stone-900 hover:bg-stone-200/50 text-[12px] font-medium font-sans text-left transition-colors"
+          >
+            <div className="flex items-center gap-2">
+              <Search className="h-3.5 w-3.5 text-stone-400" />
+              <span>Search</span>
+            </div>
+            <span className="text-[10px] text-stone-400 bg-stone-200/50 px-1 py-0.5 rounded flex items-center gap-0.5 font-mono">
+              <Command className="h-2.5 w-2.5" />
+              <span>P</span>
+            </span>
+          </button>
 
           {/* Quick static settings action buttons */}
           <button
@@ -144,7 +134,7 @@ export const Sidebar: React.FC = () => {
             className="w-full flex items-center justify-between px-2.5 py-1.5 rounded-md text-stone-500 hover:text-stone-900 hover:bg-stone-200/30 text-[12px] font-medium font-sans"
           >
             <div className="flex items-center gap-2">
-              <Settings className="h-3.5 w-3.5" />
+              <Settings className="h-3.5 w-3.5 text-stone-400" />
               <span>Settings & Members</span>
             </div>
             <span className="text-[10px] text-stone-400 bg-stone-200/50 px-1 py-0.5 rounded flex items-center gap-0.5 font-mono">
@@ -156,129 +146,89 @@ export const Sidebar: React.FC = () => {
 
         {/* Scrollable Document List */}
         <div className="flex-1 overflow-y-auto px-2 py-3 space-y-4">
-          {/* Search Results Mode */}
-          {searchQuery.trim() !== "" ? (
-            <div className="space-y-1">
-              <div className="px-2 pb-1 text-[11px] font-bold text-stone-400 uppercase tracking-wider flex items-center justify-between">
-                <span>Search Results ({filteredPages.length})</span>
+          {/* Favorites Section */}
+          {favoritePages.length > 0 && (
+            <div className="space-y-0.5">
+              <div className="px-2 pb-1 text-[11px] font-bold text-stone-400 uppercase tracking-wider flex items-center gap-1 font-sans">
+                <Star className="h-3 w-3 fill-amber-500 text-amber-500" />
+                <span>Favorites</span>
+              </div>
+              <div className="space-y-0.5">
+                {favoritePages.map((page) => (
+                  <SidebarItem
+                    key={`fav-${page.id}`}
+                    page={page}
+                    level={0}
+                    activeId={activePageId}
+                    allPages={pages}
+                    onSelect={handleSelectPage}
+                    onCreateChild={createPage}
+                    onDelete={deletePage}
+                    onToggleFavorite={handleToggleFavorite}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Private Pages Section */}
+          <div className="space-y-0.5">
+            <div className="px-2 pb-1 text-[11px] font-bold text-stone-400 uppercase tracking-wider flex items-center justify-between font-sans">
+              <span className="flex items-center gap-1">
+                <FolderOpen className="h-3 w-3 text-stone-400" />
+                <span>Private Pages</span>
+              </span>
+              <button
+                id="add-root-page-top-btn"
+                onClick={handleCreateRootPage}
+                className="p-0.5 rounded text-stone-400 hover:text-stone-700 hover:bg-stone-200"
+                title="Add a page"
+              >
+                <Plus className="h-3.5 w-3.5" />
+              </button>
+            </div>
+            
+            {rootPages.length > 0 ? (
+              <div className="space-y-0.5">
+                {rootPages.map((page) => (
+                  <SidebarItem
+                    key={page.id}
+                    page={page}
+                    level={0}
+                    activeId={activePageId}
+                    allPages={pages}
+                    onSelect={handleSelectPage}
+                    onCreateChild={createPage}
+                    onDelete={deletePage}
+                    onToggleFavorite={handleToggleFavorite}
+                  />
+                ))}
+              </div>
+            ) : (
+              <div className="px-3 py-6 text-center border border-dashed border-stone-200 rounded-lg">
+                <p className="text-[11px] text-stone-400 font-sans mb-2">No pages yet</p>
                 <button
-                  onClick={() => setSearchQuery("")}
-                  className="text-stone-400 hover:text-stone-600 normal-case font-normal text-[10px]"
+                  onClick={handleCreateRootPage}
+                  className="inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-medium text-stone-600 bg-stone-100 hover:bg-stone-200 border border-stone-200 rounded transition-all"
                 >
-                  Clear
+                  <Plus className="h-3 w-3" />
+                  Create first page
                 </button>
               </div>
-              {filteredPages.length > 0 ? (
-                <div className="space-y-0.5">
-                  {filteredPages.map((page) => (
-                    <div
-                      key={page.id}
-                      onClick={() => handleSelectPage(page.id)}
-                      className={`flex items-center gap-2 px-2 py-1.5 rounded-md cursor-pointer text-xs font-medium transition-colors ${
-                        activePageId === page.id
-                          ? "bg-stone-200/60 text-stone-950"
-                          : "text-stone-600 hover:bg-stone-200/30 hover:text-stone-900"
-                      }`}
-                    >
-                      <span className="text-sm shrink-0">{page.icon || "📄"}</span>
-                      <div className="flex flex-col min-w-0 flex-1">
-                        <span className="truncate font-sans font-medium text-stone-800">
-                          {page.title.trim() === "" ? "Untitled" : page.title}
-                        </span>
-                        {page.content && (
-                          <span className="truncate text-[10px] text-stone-400 font-normal">
-                            {page.content.substring(0, 40)}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <div className="px-2 py-4 text-xs text-stone-400 italic text-center font-sans">
-                  No matching pages found
-                </div>
-              )}
-            </div>
-          ) : (
-            <>
-              {/* Favorites Section */}
-              {favoritePages.length > 0 && (
-                <div className="space-y-0.5">
-                  <div className="px-2 pb-1 text-[11px] font-bold text-stone-400 uppercase tracking-wider flex items-center gap-1 font-sans">
-                    <Star className="h-3 w-3 fill-amber-500 text-amber-500" />
-                    <span>Favorites</span>
-                  </div>
-                  <div className="space-y-0.5">
-                    {favoritePages.map((page) => (
-                      <SidebarItem
-                        key={`fav-${page.id}`}
-                        page={page}
-                        level={0}
-                        activeId={activePageId}
-                        allPages={pages}
-                        onSelect={handleSelectPage}
-                        onCreateChild={createPage}
-                        onDelete={deletePage}
-                        onToggleFavorite={handleToggleFavorite}
-                      />
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* Private Pages Section */}
-              <div className="space-y-0.5">
-                <div className="px-2 pb-1 text-[11px] font-bold text-stone-400 uppercase tracking-wider flex items-center justify-between font-sans">
-                  <span className="flex items-center gap-1">
-                    <FolderOpen className="h-3 w-3 text-stone-400" />
-                    <span>Private Pages</span>
-                  </span>
-                  <button
-                    id="add-root-page-top-btn"
-                    onClick={handleCreateRootPage}
-                    className="p-0.5 rounded text-stone-400 hover:text-stone-700 hover:bg-stone-200"
-                    title="Add a page"
-                  >
-                    <Plus className="h-3.5 w-3.5" />
-                  </button>
-                </div>
-                
-                {rootPages.length > 0 ? (
-                  <div className="space-y-0.5">
-                    {rootPages.map((page) => (
-                      <SidebarItem
-                        key={page.id}
-                        page={page}
-                        level={0}
-                        activeId={activePageId}
-                        allPages={pages}
-                        onSelect={handleSelectPage}
-                        onCreateChild={createPage}
-                        onDelete={deletePage}
-                        onToggleFavorite={handleToggleFavorite}
-                      />
-                    ))}
-                  </div>
-                ) : (
-                  <div className="px-3 py-6 text-center border border-dashed border-stone-200 rounded-lg">
-                    <p className="text-[11px] text-stone-400 font-sans mb-2">No pages yet</p>
-                    <button
-                      onClick={handleCreateRootPage}
-                      className="inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-medium text-stone-600 bg-stone-100 hover:bg-stone-200 border border-stone-200 rounded transition-all"
-                    >
-                      <Plus className="h-3 w-3" />
-                      Create first page
-                    </button>
-                  </div>
-                )}
-              </div>
-            </>
-          )}
+            )}
+          </div>
         </div>
 
         {/* Footer Actions */}
-        <div className="p-2 border-t border-stone-200 bg-stone-50 shrink-0">
+        <div className="p-2 border-t border-stone-200 bg-stone-50 shrink-0 space-y-1">
+          <button
+            id="sidebar-templates-btn"
+            onClick={() => setTemplateModalOpen(true)}
+            className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-md text-stone-600 hover:text-stone-900 hover:bg-stone-200/50 text-[13px] font-medium font-sans text-left transition-colors"
+          >
+            <Sparkles className="h-4 w-4 text-amber-500 shrink-0" />
+            <span>Templates</span>
+          </button>
           <button
             id="sidebar-new-page-footer-btn"
             onClick={handleCreateRootPage}
@@ -289,6 +239,12 @@ export const Sidebar: React.FC = () => {
           </button>
         </div>
       </aside>
+
+      {/* Template Gallery Modal */}
+      <TemplateGalleryModal
+        isOpen={templateModalOpen}
+        onClose={() => setTemplateModalOpen(false)}
+      />
     </>
   );
 };
