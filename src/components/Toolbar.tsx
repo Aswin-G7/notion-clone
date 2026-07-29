@@ -9,7 +9,7 @@ export const Toolbar: React.FC = () => {
     activePage,
     sidebarOpen,
     setSidebarOpen,
-    updatePage,
+    toggleFavorite,
     deletePage,
     setActivePageId,
     setIsSearchOpen,
@@ -49,11 +49,11 @@ export const Toolbar: React.FC = () => {
   const breadcrumbs = getBreadcrumbs(activePage, pages);
 
   const handleToggleFavorite = () => {
-    updatePage(activePage.id, { isFavorite: !activePage.isFavorite });
+    toggleFavorite(activePage.id);
   };
 
   const handleDelete = () => {
-    if (window.confirm(`Are you sure you want to delete "${activePage.title || "Untitled"}"? This will delete all subpages as well.`)) {
+    if (window.confirm(`Are you sure you want to move "${activePage.title || "Untitled"}" to Trash?`)) {
       deletePage(activePage.id);
     }
   };

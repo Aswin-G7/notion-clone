@@ -23,19 +23,9 @@ export const ChildPageBlock: React.FC<ChildPageBlockProps> = ({
   handleChildPageKeyDown,
   isSelected,
 }) => {
-  const childPage = pages.find((p) => p.id === block.data.pageId);
+  const childPage = pages.find((p) => p.id === block.data.pageId && !p.isDeleted);
   if (!childPage) {
-    return (
-      <div className="flex items-center gap-2 p-2 bg-red-50 border border-red-200 rounded text-xs text-red-500 font-sans italic">
-        <span>Broken reference: This subpage was deleted</span>
-        <button
-          onClick={() => deleteBlock(activePage.id, block.id)}
-          className="ml-auto text-red-600 hover:underline font-bold"
-        >
-          Dismiss block
-        </button>
-      </div>
-    );
+    return null;
   }
 
   return (

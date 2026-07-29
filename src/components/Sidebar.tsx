@@ -1,7 +1,10 @@
-import React, { useState } from "react";
+import React, { useState, useRef } from "react";
 import { useApp } from "../context/AppContext";
 import { SidebarItem } from "./SidebarItem";
 import { TemplateGalleryModal } from "./TemplateGalleryModal";
+import { TrashModal } from "./TrashModal";
+import { PageContextMenu } from "./PageContextMenu";
+import { Page } from "../types";
 import {
   Plus,
   Search,
@@ -15,12 +18,23 @@ import {
   FilePlus,
   Check,
   LayoutGrid,
-  Sparkles
+  Sparkles,
+  ChevronDown,
+  ChevronRight,
+  Trash2,
+  Clock,
+  Download,
+  Upload,
 } from "lucide-react";
 
 export const Sidebar: React.FC = () => {
   const {
     pages,
+    favoritePages,
+    recentPages,
+    trashPages,
+    toggleFavorite,
+    reorderFavorites,
     activePageId,
     sidebarOpen,
     setSidebarOpen,
@@ -29,13 +43,41 @@ export const Sidebar: React.FC = () => {
     updatePage,
     setActivePageId,
     setIsSearchOpen,
+    exportWorkspace,
+    importWorkspace,
   } = useApp();
 
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleImportFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const content = event.target?.result as string;
+      if (content) {
+        importWorkspace(content);
+      }
+    };
+    reader.readAsText(file);
+    e.target.value = "";
+  };
+
   const [templateModalOpen, setTemplateModalOpen] = useState(false);
+  const [trashModalOpen, setTrashModalOpen] = useState(false);
+  const [isFavoritesExpanded, setIsFavoritesExpanded] = useState(true);
+  const [isRecentExpanded, setIsRecentExpanded] = useState(true);
+
+  // Drag and drop state for favorites reordering
+  const [draggedFavId, setDraggedFavId] = useState<string | null>(null);
+  const [dropTargetId, setDropTargetId] = useState<string | null>(null);
+
+  // Right-click context menu state
+  const [contextMenuPage, setContextMenuPage] = useState<Page | null>(null);
+  const [contextMenuPos, setContextMenuPos] = useState<{ x: number; y: number } | null>(null);
 
   const handleSelectPage = (id: string) => {
     setActivePageId(id);
-    // On mobile viewports, automatically close the sidebar after selection for a cleaner UX
     if (window.innerWidth < 768) {
       setSidebarOpen(false);
     }
@@ -45,15 +87,54 @@ export const Sidebar: React.FC = () => {
     createPage(null);
   };
 
-  const handleToggleFavorite = (id: string, isFavorite: boolean) => {
-    updatePage(id, { isFavorite });
+  const handleDuplicatePage = (pageId: string) => {
+    const pageToDup = pages.find((p) => p.id === pageId);
+    if (!pageToDup) return;
+    const newId = createPage(pageToDup.parentId);
+    updatePage(newId, {
+      title: `${pageToDup.title || "Untitled"} (Copy)`,
+      icon: pageToDup.icon,
+      coverImage: pageToDup.coverImage,
+      blocks: JSON.parse(JSON.stringify(pageToDup.blocks)),
+    });
   };
 
-  // Get only top-level pages (no parent) to start the recursion
-  const rootPages = pages.filter((page) => !page.parentId);
+  // Drag and drop handlers for favorites
+  const handleDragStartFav = (e: React.DragEvent, pageId: string) => {
+    e.dataTransfer.setData("text/plain", pageId);
+    e.dataTransfer.effectAllowed = "move";
+    setDraggedFavId(pageId);
+  };
 
-  // Get favorite pages
-  const favoritePages = pages.filter((page) => page.isFavorite);
+  const handleDragOverFav = (e: React.DragEvent, pageId: string) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+    if (draggedFavId && draggedFavId !== pageId) {
+      setDropTargetId(pageId);
+    }
+  };
+
+  const handleDropFav = (e: React.DragEvent, targetId: string) => {
+    e.preventDefault();
+    const draggedId = e.dataTransfer.getData("text/plain") || draggedFavId;
+    if (draggedId && draggedId !== targetId) {
+      reorderFavorites(draggedId, targetId);
+    }
+    setDraggedFavId(null);
+    setDropTargetId(null);
+  };
+
+  const handleDragLeaveFav = () => {
+    // Optionally reset target if leaving section
+  };
+
+  const handleDragEndFav = () => {
+    setDraggedFavId(null);
+    setDropTargetId(null);
+  };
+
+  // Get only top-level pages (no parent) to start recursion
+  const rootPages = pages.filter((page) => !page.parentId && !page.isDeleted);
 
   return (
     <>
@@ -149,25 +230,93 @@ export const Sidebar: React.FC = () => {
           {/* Favorites Section */}
           {favoritePages.length > 0 && (
             <div className="space-y-0.5">
-              <div className="px-2 pb-1 text-[11px] font-bold text-stone-400 uppercase tracking-wider flex items-center gap-1 font-sans">
-                <Star className="h-3 w-3 fill-amber-500 text-amber-500" />
-                <span>Favorites</span>
+              <div className="px-2 pb-1 text-[11px] font-bold text-stone-400 uppercase tracking-wider flex items-center justify-between font-sans">
+                <button
+                  id="toggle-favorites-section-btn"
+                  onClick={() => setIsFavoritesExpanded((prev) => !prev)}
+                  className="flex items-center gap-1 hover:text-stone-700 transition-colors cursor-pointer"
+                >
+                  <Star className="h-3 w-3 fill-amber-500 text-amber-500" />
+                  <span>Favorites</span>
+                  {isFavoritesExpanded ? (
+                    <ChevronDown className="h-3 w-3 text-stone-400" />
+                  ) : (
+                    <ChevronRight className="h-3 w-3 text-stone-400" />
+                  )}
+                </button>
               </div>
-              <div className="space-y-0.5">
-                {favoritePages.map((page) => (
-                  <SidebarItem
-                    key={`fav-${page.id}`}
-                    page={page}
-                    level={0}
-                    activeId={activePageId}
-                    allPages={pages}
-                    onSelect={handleSelectPage}
-                    onCreateChild={createPage}
-                    onDelete={deletePage}
-                    onToggleFavorite={handleToggleFavorite}
-                  />
-                ))}
+
+              {isFavoritesExpanded && (
+                <div className="space-y-0.5">
+                  {favoritePages.map((page) => (
+                    <SidebarItem
+                      key={`fav-${page.id}`}
+                      page={page}
+                      level={0}
+                      activeId={activePageId}
+                      allPages={pages}
+                      onSelect={handleSelectPage}
+                      onCreateChild={createPage}
+                      onDelete={deletePage}
+                      onToggleFavorite={(id) => toggleFavorite(id)}
+                      onContextMenuPage={(p, pos) => {
+                        setContextMenuPage(p);
+                        setContextMenuPos(pos);
+                      }}
+                      isDraggable={true}
+                      onDragStartFav={handleDragStartFav}
+                      onDragOverFav={handleDragOverFav}
+                      onDropFav={handleDropFav}
+                      onDragLeaveFav={handleDragLeaveFav}
+                      onDragEndFav={handleDragEndFav}
+                      isDropTargetAbove={dropTargetId === page.id && draggedFavId !== page.id}
+                    />
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Recent Pages Section */}
+          {recentPages.length > 0 && (
+            <div className="space-y-0.5">
+              <div className="px-2 pb-1 text-[11px] font-bold text-stone-400 uppercase tracking-wider flex items-center justify-between font-sans">
+                <button
+                  id="toggle-recent-section-btn"
+                  onClick={() => setIsRecentExpanded((prev) => !prev)}
+                  className="flex items-center gap-1 hover:text-stone-700 transition-colors cursor-pointer"
+                >
+                  <Clock className="h-3 w-3 text-stone-400" />
+                  <span>Recent</span>
+                  {isRecentExpanded ? (
+                    <ChevronDown className="h-3 w-3 text-stone-400" />
+                  ) : (
+                    <ChevronRight className="h-3 w-3 text-stone-400" />
+                  )}
+                </button>
               </div>
+
+              {isRecentExpanded && (
+                <div className="space-y-0.5">
+                  {recentPages.map((page) => (
+                    <SidebarItem
+                      key={`recent-${page.id}`}
+                      page={page}
+                      level={0}
+                      activeId={activePageId}
+                      allPages={pages}
+                      onSelect={handleSelectPage}
+                      onCreateChild={createPage}
+                      onDelete={deletePage}
+                      onToggleFavorite={(id) => toggleFavorite(id)}
+                      onContextMenuPage={(p, pos) => {
+                        setContextMenuPage(p);
+                        setContextMenuPos(pos);
+                      }}
+                    />
+                  ))}
+                </div>
+              )}
             </div>
           )}
 
@@ -200,7 +349,11 @@ export const Sidebar: React.FC = () => {
                     onSelect={handleSelectPage}
                     onCreateChild={createPage}
                     onDelete={deletePage}
-                    onToggleFavorite={handleToggleFavorite}
+                    onToggleFavorite={(id) => toggleFavorite(id)}
+                    onContextMenuPage={(p, pos) => {
+                      setContextMenuPage(p);
+                      setContextMenuPos(pos);
+                    }}
                   />
                 ))}
               </div>
@@ -224,15 +377,55 @@ export const Sidebar: React.FC = () => {
           <button
             id="sidebar-templates-btn"
             onClick={() => setTemplateModalOpen(true)}
-            className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-md text-stone-600 hover:text-stone-900 hover:bg-stone-200/50 text-[13px] font-medium font-sans text-left transition-colors"
+            className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-md text-stone-600 hover:text-stone-900 hover:bg-stone-200/50 text-[13px] font-medium font-sans text-left transition-colors cursor-pointer"
           >
             <Sparkles className="h-4 w-4 text-amber-500 shrink-0" />
             <span>Templates</span>
           </button>
           <button
+            id="sidebar-trash-btn"
+            onClick={() => setTrashModalOpen(true)}
+            className="w-full flex items-center justify-between px-2.5 py-1.5 rounded-md text-stone-600 hover:text-stone-900 hover:bg-stone-200/50 text-[13px] font-medium font-sans text-left transition-colors cursor-pointer"
+          >
+            <div className="flex items-center gap-2">
+              <Trash2 className="h-4 w-4 text-stone-400 shrink-0" />
+              <span>Trash</span>
+            </div>
+            {trashPages.length > 0 && (
+              <span className="text-[10px] font-mono font-medium text-stone-500 bg-stone-200/70 px-1.5 py-0.2 rounded-full">
+                {trashPages.length}
+              </span>
+            )}
+          </button>
+          <button
+            id="sidebar-export-workspace-btn"
+            onClick={exportWorkspace}
+            className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-md text-stone-600 hover:text-stone-900 hover:bg-stone-200/50 text-[13px] font-medium font-sans text-left transition-colors cursor-pointer"
+            title="Export complete workspace JSON backup"
+          >
+            <Download className="h-4 w-4 text-stone-400 shrink-0" />
+            <span>Export Workspace</span>
+          </button>
+          <button
+            id="sidebar-import-workspace-btn"
+            onClick={() => fileInputRef.current?.click()}
+            className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-md text-stone-600 hover:text-stone-900 hover:bg-stone-200/50 text-[13px] font-medium font-sans text-left transition-colors cursor-pointer"
+            title="Import workspace JSON backup"
+          >
+            <Upload className="h-4 w-4 text-stone-400 shrink-0" />
+            <span>Import Workspace</span>
+          </button>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".json"
+            onChange={handleImportFile}
+            className="hidden"
+          />
+          <button
             id="sidebar-new-page-footer-btn"
             onClick={handleCreateRootPage}
-            className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-md text-stone-500 hover:text-stone-900 hover:bg-stone-200/50 text-[13px] font-medium font-sans text-left transition-colors"
+            className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-md text-stone-500 hover:text-stone-900 hover:bg-stone-200/50 text-[13px] font-medium font-sans text-left transition-colors cursor-pointer"
           >
             <FilePlus className="h-4 w-4 text-stone-400" />
             <span>Add a page</span>
@@ -245,6 +438,28 @@ export const Sidebar: React.FC = () => {
         isOpen={templateModalOpen}
         onClose={() => setTemplateModalOpen(false)}
       />
+
+      {/* Trash System Modal */}
+      <TrashModal
+        isOpen={trashModalOpen}
+        onClose={() => setTrashModalOpen(false)}
+      />
+
+      {/* Page Context Menu */}
+      {contextMenuPage && contextMenuPos && (
+        <PageContextMenu
+          page={contextMenuPage}
+          position={contextMenuPos}
+          onClose={() => {
+            setContextMenuPage(null);
+            setContextMenuPos(null);
+          }}
+          onToggleFavorite={toggleFavorite}
+          onCreateChild={createPage}
+          onDuplicate={handleDuplicatePage}
+          onDelete={deletePage}
+        />
+      )}
     </>
   );
 };

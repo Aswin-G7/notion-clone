@@ -33,6 +33,7 @@ import {
 import { SortableBlockWrapper } from "./SortableBlockWrapper";
 import { BlockRenderer } from "./blocks/BlockRenderer";
 import { TemplateGalleryModal } from "./TemplateGalleryModal";
+import { PageHeader } from "./PageHeader";
 import { PREDEFINED_TEMPLATES } from "../templates/templateRegistry";
 
 const getPlainTextFromHtml = (html: string): string => {
@@ -119,7 +120,17 @@ const EMOJIS = [
   "🐱", "🐶", "🥑", "🥐", "🏔️", "🏕️", "🏠", "⏰"
 ];
 
-const isBlockVisible = (block: Block, blocksMap: Map<string, Block>): boolean => {
+const isBlockVisible = (
+  block: Block,
+  blocksMap: Map<string, Block>,
+  pages?: Page[]
+): boolean => {
+  if (block.type === "child-page" && pages) {
+    const childPage = pages.find((p) => p.id === block.data?.pageId);
+    if (!childPage || childPage.isDeleted) {
+      return false;
+    }
+  }
   let currParentId = block.data?.parentId;
   while (currParentId) {
     const parent = blocksMap.get(currParentId);
@@ -507,7 +518,7 @@ export const EditorArea: React.FC = () => {
       // 2. Block Selected Mode
       if (!isEditing && selectedBlockId && activePage) {
         const blocksMap = new Map<string, Block>(activePage.blocks.map((b) => [b.id, b]));
-        const visibleBlocks = activePage.blocks.filter((b) => isBlockVisible(b, blocksMap));
+        const visibleBlocks = activePage.blocks.filter((b) => isBlockVisible(b, blocksMap, pages));
         const currentIndex = visibleBlocks.findIndex((b) => b.id === selectedBlockId);
 
         if (e.key === "Escape") {
@@ -938,7 +949,7 @@ export const EditorArea: React.FC = () => {
     if (e.key === "Tab" && !e.shiftKey) {
       e.preventDefault();
       const blocksMap = new Map<string, Block>(activePage.blocks.map((b) => [b.id, b]));
-      const visibleBlocks = activePage.blocks.filter((b) => isBlockVisible(b, blocksMap));
+      const visibleBlocks = activePage.blocks.filter((b) => isBlockVisible(b, blocksMap, pages));
       const idx = visibleBlocks.findIndex((b) => b.id === block.id);
       if (idx > 0) {
         const prevBlock = visibleBlocks[idx - 1];
@@ -1084,7 +1095,7 @@ export const EditorArea: React.FC = () => {
       const isAtStart = target.selectionStart === 0 && target.selectionEnd === 0;
       if (isAtStart) {
         const blocksMap = new Map<string, Block>(activePage.blocks.map((b) => [b.id, b]));
-        const visibleBlocks = activePage.blocks.filter((b) => isBlockVisible(b, blocksMap));
+        const visibleBlocks = activePage.blocks.filter((b) => isBlockVisible(b, blocksMap, pages));
         const currentIndex = visibleBlocks.findIndex((b) => b.id === block.id);
         if (currentIndex > 0) {
           e.preventDefault();
@@ -1100,7 +1111,7 @@ export const EditorArea: React.FC = () => {
       const isAtEnd = target.selectionStart === textLength && target.selectionEnd === textLength;
       if (isAtEnd) {
         const blocksMap = new Map<string, Block>(activePage.blocks.map((b) => [b.id, b]));
-        const visibleBlocks = activePage.blocks.filter((b) => isBlockVisible(b, blocksMap));
+        const visibleBlocks = activePage.blocks.filter((b) => isBlockVisible(b, blocksMap, pages));
         const currentIndex = visibleBlocks.findIndex((b) => b.id === block.id);
         if (currentIndex < visibleBlocks.length - 1) {
           e.preventDefault();
@@ -1135,7 +1146,7 @@ export const EditorArea: React.FC = () => {
 
     if (e.key === "Enter") {
       e.preventDefault();
-      const childPage = pages.find((p) => p.id === block.data.pageId);
+      const childPage = pages.find((p) => p.id === block.data.pageId && !p.isDeleted);
       if (childPage) {
         setActivePageId(childPage.id);
       }
@@ -1219,158 +1230,16 @@ export const EditorArea: React.FC = () => {
       onDragOver={handleWorkspaceDragOver}
       className="flex-1 flex flex-col bg-white overflow-y-auto relative"
     >
-      
-      {/* Cover Image Banner */}
-      {activePage.coverImage ? (
-        <div id="page-cover-banner" className="relative group w-full h-44 md:h-52 bg-stone-100 overflow-hidden shrink-0">
-          <img
-            src={activePage.coverImage}
-            alt="Page cover"
-            referrerPolicy="no-referrer"
-            className="w-full h-full object-cover select-none pointer-events-none"
-          />
-          <div className="absolute right-4 bottom-4 opacity-0 group-hover:opacity-100 transition-opacity bg-white/90 backdrop-blur-[2px] border border-stone-200 rounded-md p-1 flex items-center gap-1.5 shadow-sm">
-            <button
-              id="change-cover-banner-btn"
-              onClick={() => setShowCoverPicker(!showCoverPicker)}
-              className="text-xs font-semibold px-2 py-1 text-stone-600 hover:text-stone-900 hover:bg-stone-100 rounded"
-            >
-              Change cover
-            </button>
-            <div className="w-[1px] h-3 bg-stone-200" />
-            <button
-              id="remove-cover-banner-btn"
-              onClick={handleRemoveCover}
-              className="text-xs font-semibold px-2 py-1 text-red-500 hover:text-red-700 hover:bg-red-50 rounded"
-            >
-              Remove
-            </button>
-          </div>
-        </div>
-      ) : null}
+      <PageHeader
+        page={activePage}
+        onUpdateTitle={(title) => updatePage(activePage.id, { title })}
+        onUpdateIcon={(icon) => updatePage(activePage.id, { icon })}
+        onUpdateCover={(coverUrl) => updatePage(activePage.id, { coverImage: coverUrl })}
+        onTitleKeyDown={handleTitleKeyDown}
+      />
 
       {/* Editor Content Container */}
-      <div className="flex-1 max-w-3xl w-full mx-auto px-6 sm:px-12 md:px-16 pt-8 pb-16 space-y-6 flex flex-col">
-        
-        {/* Cover / Icon Quick Add Controls (Only if not already present) */}
-        {!activePage.coverImage || !activePage.icon ? (
-          <div className="flex items-center gap-3 text-stone-400 select-none pb-2">
-            {!activePage.icon && (
-              <button
-                id="add-icon-shortcut-btn"
-                onClick={handleAddEmoji}
-                className="flex items-center gap-1 text-xs font-medium px-2 py-1 hover:bg-stone-100 rounded text-stone-500 hover:text-stone-800 transition-colors"
-              >
-                <Smile className="h-3.5 w-3.5" />
-                <span>Add icon</span>
-              </button>
-            )}
-            {!activePage.coverImage && (
-              <button
-                id="add-cover-shortcut-btn"
-                onClick={handleAddDefaultCover}
-                className="flex items-center gap-1 text-xs font-medium px-2 py-1 hover:bg-stone-100 rounded text-stone-500 hover:text-stone-800 transition-colors"
-              >
-                <ImageIcon className="h-3.5 w-3.5" />
-                <span>Add cover</span>
-              </button>
-            )}
-          </div>
-        ) : null}
-
-        {/* Floating Cover Selection Menu */}
-        {showCoverPicker && (
-          <div id="cover-picker-menu" className="border border-stone-200 rounded-lg p-3 bg-white shadow-md space-y-2 select-none shrink-0">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-bold text-stone-500 uppercase tracking-wider">Select Preset Cover</span>
-              <button
-                onClick={() => setShowCoverPicker(false)}
-                className="text-xs text-stone-400 hover:text-stone-600 font-semibold"
-              >
-                Close
-              </button>
-            </div>
-            <div className="grid grid-cols-4 sm:grid-cols-7 gap-2">
-              {COVER_PRESETS.map((preset, index) => (
-                <button
-                  key={index}
-                  onClick={() => handleSelectCover(preset)}
-                  className={`relative h-12 w-full rounded-md overflow-hidden border-2 transition-all ${
-                    activePage.coverImage === preset ? "border-stone-800 scale-95" : "border-transparent hover:scale-105"
-                  }`}
-                >
-                  <img src={preset} alt="" referrerPolicy="no-referrer" className="w-full h-full object-cover" />
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* Page Icon Display & Picker */}
-        <div className="relative shrink-0 select-none">
-          {activePage.icon ? (
-            <div className="relative inline-block group">
-              <button
-                id="page-icon-badge"
-                onClick={() => setShowEmojiPicker(!showEmojiPicker)}
-                className="text-4xl md:text-5xl hover:bg-stone-100 p-2 rounded-xl transition-all active:scale-95 cursor-pointer flex items-center justify-center shrink-0"
-                title="Change Icon"
-              >
-                {activePage.icon}
-              </button>
-              <button
-                id="remove-icon-btn"
-                onClick={() => updatePage(activePage.id, { icon: undefined })}
-                className="absolute -top-1 -right-1 hidden group-hover:flex items-center justify-center w-5 h-5 rounded-full bg-stone-200 hover:bg-stone-300 text-stone-600 text-xs font-bold transition-all shadow-sm"
-                title="Remove Icon"
-              >
-                ×
-              </button>
-            </div>
-          ) : null}
-
-          {/* Emoji Selection Popover */}
-          {showEmojiPicker && (
-            <div
-              id="emoji-picker-popover"
-              className="absolute left-0 mt-2 z-30 border border-stone-200 rounded-xl p-3 bg-white shadow-lg max-w-sm space-y-2"
-            >
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-bold text-stone-500 uppercase tracking-wider">Select Emoji Icon</span>
-                <button
-                  onClick={() => setShowEmojiPicker(false)}
-                  className="text-xs text-stone-400 hover:text-stone-600 font-semibold"
-                >
-                  Cancel
-                </button>
-              </div>
-              <div className="grid grid-cols-8 gap-1.5 max-h-48 overflow-y-auto p-1 bg-stone-50 rounded-lg">
-                {EMOJIS.map((emoji) => (
-                  <button
-                    key={emoji}
-                    onClick={() => handleSelectEmoji(emoji)}
-                    className="text-2xl hover:bg-white hover:shadow-sm p-1 rounded transition-all active:scale-90"
-                  >
-                    {emoji}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* Page Title Auto-sizing Input */}
-        <div className="shrink-0">
-          <input
-            id="editor-title-input"
-            type="text"
-            value={activePage.title}
-            onChange={handleTitleChange}
-            onKeyDown={handleTitleKeyDown}
-            placeholder="Untitled Page"
-            className="w-full font-display font-bold tracking-tight text-3xl sm:text-4xl text-stone-900 placeholder-stone-200 outline-none border-none py-1 resize-none select-text focus:placeholder-stone-300 transition-all"
-          />
-        </div>
+      <div className="flex-1 max-w-3xl w-full mx-auto px-6 sm:px-12 md:px-16 pt-2 pb-16 space-y-6 flex flex-col">
 
         {/* Notion-style Page Template Quick Launcher on Blank Pages */}
         {isEmptyPage && (
@@ -1408,7 +1277,7 @@ export const EditorArea: React.FC = () => {
         <div className="flex-1 flex flex-col">
           {activePage.blocks && activePage.blocks.length > 0 ? (() => {
             const blocksMap = new Map<string, Block>(activePage.blocks.map((b) => [b.id, b]));
-            const visibleBlocks = activePage.blocks.filter((b) => isBlockVisible(b, blocksMap));
+            const visibleBlocks = activePage.blocks.filter((b) => isBlockVisible(b, blocksMap, pages));
 
             return (
               <DndContext
@@ -1476,7 +1345,7 @@ export const EditorArea: React.FC = () => {
                           addBlock={addBlock}
                           setActivePageId={setActivePageId}
                           handleChildPageKeyDown={handleChildPageKeyDown}
-                          isBlockVisible={isBlockVisible}
+                          isBlockVisible={(b, bMap) => isBlockVisible(b, bMap, pages)}
                           slashMenuOpen={slashMenuOpen}
                           slashMenuBlockId={slashMenuBlockId}
                           slashMenuSearch={slashMenuSearch}

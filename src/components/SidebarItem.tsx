@@ -12,6 +12,15 @@ interface SidebarItemProps {
   onCreateChild: (parentId: string) => void;
   onDelete: (id: string) => void;
   onToggleFavorite: (id: string, isFav: boolean) => void;
+  onContextMenuPage?: (page: Page, pos: { x: number; y: number }) => void;
+  isDraggable?: boolean;
+  onDragStartFav?: (e: React.DragEvent, pageId: string) => void;
+  onDragOverFav?: (e: React.DragEvent, pageId: string) => void;
+  onDropFav?: (e: React.DragEvent, pageId: string) => void;
+  onDragLeaveFav?: (e: React.DragEvent) => void;
+  onDragEndFav?: () => void;
+  isDropTargetAbove?: boolean;
+  isDropTargetBelow?: boolean;
 }
 
 export const SidebarItem: React.FC<SidebarItemProps> = ({
@@ -23,9 +32,18 @@ export const SidebarItem: React.FC<SidebarItemProps> = ({
   onCreateChild,
   onDelete,
   onToggleFavorite,
+  onContextMenuPage,
+  isDraggable = false,
+  onDragStartFav,
+  onDragOverFav,
+  onDropFav,
+  onDragLeaveFav,
+  onDragEndFav,
+  isDropTargetAbove,
+  isDropTargetBelow,
 }) => {
   const [isExpanded, setIsExpanded] = useState(true);
-  const children = allPages.filter((p) => p.parentId === page.id);
+  const children = allPages.filter((p) => p.parentId === page.id && !p.isDeleted);
   const hasChildren = children.length > 0;
   const isActive = activeId === page.id;
 
@@ -38,11 +56,29 @@ export const SidebarItem: React.FC<SidebarItemProps> = ({
     onSelect(page.id);
   };
 
+  const handleContextMenu = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (onContextMenuPage) {
+      onContextMenuPage(page, { x: e.clientX, y: e.clientY });
+    }
+  };
+
   return (
-    <div className="w-full">
+    <div className="w-full relative">
+      {isDropTargetAbove && (
+        <div className="absolute top-0 left-3 right-2 h-0.5 bg-amber-500 z-10 rounded-full" />
+      )}
       <div
         id={`sidebar-item-${page.id}`}
         onClick={handleSelect}
+        onContextMenu={handleContextMenu}
+        draggable={isDraggable}
+        onDragStart={(e) => onDragStartFav?.(e, page.id)}
+        onDragOver={(e) => onDragOverFav?.(e, page.id)}
+        onDrop={(e) => onDropFav?.(e, page.id)}
+        onDragLeave={onDragLeaveFav}
+        onDragEnd={onDragEndFav}
         style={{ paddingLeft: `${level * 12 + 12}px` }}
         className={`group relative flex items-center justify-between py-1.5 pr-2 rounded-md cursor-pointer text-sm font-medium transition-colors select-none ${
           isActive
@@ -145,12 +181,16 @@ export const SidebarItem: React.FC<SidebarItemProps> = ({
                   onCreateChild={onCreateChild}
                   onDelete={onDelete}
                   onToggleFavorite={onToggleFavorite}
+                  onContextMenuPage={onContextMenuPage}
                 />
               ))}
             </div>
           </motion.div>
         )}
       </AnimatePresence>
+      {isDropTargetBelow && (
+        <div className="absolute bottom-0 left-3 right-2 h-0.5 bg-amber-500 z-10 rounded-full" />
+      )}
     </div>
   );
 };

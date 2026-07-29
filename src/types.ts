@@ -34,16 +34,25 @@ export interface Block {
   };
 }
 
+export interface ClipboardBlockData {
+  rootBlock: Block;
+  childBlocks: Block[];
+}
+
 export interface Page {
   id: string;
   title: string;
-  icon?: string; // e.g. emoji
-  coverImage?: string;
+  icon?: string | null;
+  coverImage?: string | null;
   isFavorite?: boolean;
+  favoriteOrder?: number;
+  isDeleted?: boolean;
+  deletedAt?: number | null;
   parentId?: string | null;
   children: string[]; // array of child page ids
   blocks: Block[];
   createdAt: number;
   updatedAt: number;
+  lastOpenedAt?: number | null;
 }
 

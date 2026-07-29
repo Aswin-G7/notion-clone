@@ -49,7 +49,8 @@ export const SearchModal: React.FC = () => {
   // Execute search via SearchService
   const results: SearchResultGroup[] = useMemo(() => {
     if (!query.trim()) return [];
-    return searchService.search(query, pages);
+    const activePages = pages.filter((p) => !p.isDeleted);
+    return searchService.search(query, activePages);
   }, [query, pages]);
 
   // Flattened list of matches for keyboard navigation

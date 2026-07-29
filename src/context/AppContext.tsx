@@ -1,7 +1,12 @@
-import React, { createContext, useContext, useState, useEffect } from "react";
+import React, { createContext, useContext, useState, useEffect, useMemo, useCallback } from "react";
 import { Page, Block, BlockType, ClipboardBlockData } from "../types";
 import { getTemplateById, instantiateTemplate } from "../templates/templateRegistry";
 import { searchService } from "../services/SearchService";
+import { favoritesService } from "../services/FavoritesService";
+import { trashService } from "../services/TrashService";
+import { recentPagesService } from "../services/RecentPagesService";
+import { persistenceService, CURRENT_SCHEMA_VERSION, WorkspaceSnapshot } from "../services/PersistenceService";
+import { resolveNextActivePage } from "../utils/navigation";
 
 export interface SearchNavigationTarget {
   pageId: string;
@@ -53,6 +58,14 @@ interface AppContextType {
   copyBlock: (pageId: string, blockId: string) => void;
   cutBlock: (pageId: string, blockId: string) => string | null;
   pasteBlock: (pageId: string, targetBlockId: string) => string | null;
+  favoritePages: Page[];
+  recentPages: Page[];
+  toggleFavorite: (pageId: string) => void;
+  reorderFavorites: (draggedId: string, targetId: string) => void;
+  trashPages: Page[];
+  restorePage: (pageId: string) => void;
+  permanentlyDeletePage: (pageId: string) => void;
+  emptyTrash: () => void;
   isSearchOpen: boolean;
   setIsSearchOpen: React.Dispatch<React.SetStateAction<boolean>>;
   highlightedBlockId: string | null;
@@ -65,6 +78,8 @@ interface AppContextType {
     rawMatchStart?: number,
     rawMatchEnd?: number
   ) => void;
+  exportWorkspace: () => void;
+  importWorkspace: (jsonString: string) => void;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -172,52 +187,80 @@ const DEFAULT_PAGES: Page[] = [
 ];
 
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const [initialSnapshot] = useState<WorkspaceSnapshot | null>(() => {
+    return persistenceService.loadWorkspace();
+  });
+
   const [pages, setPages] = useState<Page[]>(() => {
-    const saved = localStorage.getItem(STORAGE_KEY);
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        return parsed.map((p: any) => {
-          let blocks = p.blocks || [];
-          if (blocks.length === 0 && p.content) {
-            blocks = [{
-              id: `block-conv-${Math.random().toString(36).substr(2, 9)}`,
-              type: "paragraph",
-              data: { text: p.content }
-            }];
-          }
-          return {
-            ...p,
-            children: p.children || [],
-            blocks,
-          };
-        });
-      } catch (e) {
-        console.error("Error parsing saved pages:", e);
-      }
+    if (initialSnapshot?.pages && initialSnapshot.pages.length > 0) {
+      return initialSnapshot.pages;
     }
     return DEFAULT_PAGES;
   });
 
   const [activePageId, setActivePageIdState] = useState<string | null>(() => {
-    const saved = localStorage.getItem(ACTIVE_PAGE_KEY);
-    if (saved) {
-      return saved;
+    if (initialSnapshot?.activePageId !== undefined && initialSnapshot?.activePageId !== null) {
+      const exists = initialSnapshot.pages.some((p) => p.id === initialSnapshot.activePageId && !p.isDeleted);
+      if (exists) return initialSnapshot.activePageId;
     }
-    return DEFAULT_PAGES[0]?.id || null;
+    const defaultPage = initialSnapshot?.pages?.find((p) => !p.parentId && !p.isDeleted) || DEFAULT_PAGES[0];
+    return defaultPage?.id || null;
   });
 
-  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [sidebarOpen, setSidebarOpen] = useState<boolean>(() => {
+    if (typeof initialSnapshot?.sidebarOpen === "boolean") {
+      return initialSnapshot.sidebarOpen;
+    }
+    return true;
+  });
+
   const [selectedBlockId, setSelectedBlockId] = useState<string | null>(null);
   const [focusToken, setFocusToken] = useState<number>(0);
 
   const triggerPageFocus = () => setFocusToken((prev) => prev + 1);
 
+  // Debounced autosave (400 ms) to avoid writing storage on every keystroke
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(pages));
-  }, [pages]);
+    const handler = setTimeout(() => {
+      persistenceService.saveWorkspace({
+        version: CURRENT_SCHEMA_VERSION,
+        timestamp: Date.now(),
+        pages,
+        activePageId,
+        sidebarOpen,
+      });
+    }, 400);
+
+    return () => {
+      clearTimeout(handler);
+    };
+  }, [pages, activePageId, sidebarOpen]);
+
+  // Ensure initial active page gets lastOpenedAt set on mount if missing
+  useEffect(() => {
+    if (activePageId) {
+      setPages((prev) => {
+        const target = prev.find((p) => p.id === activePageId);
+        if (target && !target.lastOpenedAt) {
+          const now = Date.now();
+          return prev.map((p) => (p.id === activePageId ? { ...p, lastOpenedAt: now } : p));
+        }
+        return prev;
+      });
+    }
+  }, []);
 
   const setActivePageId = (id: string | null) => {
+    if (id) {
+      const targetPage = pages.find((p) => p.id === id);
+      if (!targetPage || targetPage.isDeleted) {
+        return;
+      }
+      const now = Date.now();
+      setPages((prev) =>
+        prev.map((p) => (p.id === id ? { ...p, lastOpenedAt: now } : p))
+      );
+    }
     setActivePageIdState(id);
     setSelectedBlockId(null);
     triggerPageFocus();
@@ -230,6 +273,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const createPage = (parentId: string | null = null, insertAfterBlockId?: string | null) => {
     const newId = `page-${Math.random().toString(36).substr(2, 9)}`;
+    const now = Date.now();
     const newPage: Page = {
       id: newId,
       title: "Untitled Page",
@@ -243,8 +287,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           data: { text: "" }
         }
       ],
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
+      createdAt: now,
+      updatedAt: now,
+      lastOpenedAt: now,
     };
 
     setPages((prev) => {
@@ -297,7 +342,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const template = getTemplateById(templateId) || getTemplateById("empty");
     if (!template) return createPage(parentId);
 
-    const newPage = instantiateTemplate(template, { parentId });
+    const instantiated = instantiateTemplate(template, { parentId });
+    const now = Date.now();
+    const newPage: Page = {
+      ...instantiated,
+      lastOpenedAt: now,
+    };
 
     setPages((prev) => {
       let updatedPages = [...prev, newPage];
@@ -361,46 +411,36 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const deletePage = (id: string) => {
-    const deleteRecursive = (idToDelete: string, allPages: Page[]): Page[] => {
-      let pagesToKeep = allPages.filter((p) => p.id !== idToDelete);
-      const children = allPages.filter((p) => p.parentId === idToDelete);
-      for (const child of children) {
-        pagesToKeep = deleteRecursive(child.id, pagesToKeep);
-      }
-      return pagesToKeep;
-    };
-
-    setPages((prev) => {
-      const pageToDelete = prev.find((p) => p.id === id);
-      const parentId = pageToDelete?.parentId;
-
-      let updated = deleteRecursive(id, prev);
-
-      if (parentId) {
-        updated = updated.map((page) => {
-          if (page.id === parentId) {
-            return {
-              ...page,
-              children: (page.children || []).filter((childId) => childId !== id),
-              blocks: page.blocks.filter((b) => !(b.type === "child-page" && b.data.pageId === id)),
-              updatedAt: Date.now(),
-            };
-          }
-          return page;
-        });
-      }
-      
-      const remainsActive = updated.some((p) => p.id === activePageId);
-      if (!remainsActive) {
-        if (updated.length > 0) {
-          const roots = updated.filter((p) => !p.parentId);
-          setActivePageId(roots.length > 0 ? roots[0].id : updated[0].id);
-        } else {
-          setActivePageId(null);
+    // Check if the current activePageId or any of its ancestors is being deleted
+    let isActiveAffected = false;
+    if (activePageId) {
+      let curr: string | null = activePageId;
+      while (curr) {
+        if (curr === id) {
+          isActiveAffected = true;
+          break;
         }
+        const pg = pages.find((p) => p.id === curr);
+        curr = pg?.parentId || null;
       }
-      return updated;
-    });
+    }
+
+    let nextActiveId: string | null = null;
+    if (isActiveAffected && activePageId) {
+      nextActiveId = resolveNextActivePage(pages, id);
+    }
+
+    setPages((prev) => trashService.softDeletePage(prev, id));
+
+    if (isActiveAffected) {
+      if (nextActiveId) {
+        setActivePageIdState(nextActiveId);
+        setSelectedBlockId(null);
+        triggerPageFocus();
+      } else {
+        createPage(null);
+      }
+    }
   };
 
   const updatePage = (id: string, updates: Partial<Page>) => {
@@ -835,10 +875,31 @@ const getLastSubtreeBlockId = (targetId: string, blocks: Block[]): string => {
   const [highlightedBlockId, setHighlightedBlockId] = useState<string | null>(null);
   const [pendingSearchTarget, setPendingSearchTarget] = useState<SearchNavigationTarget | null>(null);
 
-  // Synchronize search index whenever pages change
+  // Synchronize search index whenever active pages change
   useEffect(() => {
-    searchService.buildIndex(pages);
+    const activePages = pages.filter((p) => !p.isDeleted);
+    searchService.buildIndex(activePages);
   }, [pages]);
+
+  // Ensure activePageId points to a non-deleted page
+  useEffect(() => {
+    if (activePageId) {
+      const activePg = pages.find((p) => p.id === activePageId);
+      if (!activePg || activePg.isDeleted) {
+        const nextId = resolveNextActivePage(pages, activePageId);
+        if (nextId) {
+          setActivePageIdState(nextId);
+        } else {
+          const activePages = pages.filter((p) => !p.isDeleted);
+          if (activePages.length > 0) {
+            setActivePageIdState(activePages[0].id);
+          } else {
+            createPage(null);
+          }
+        }
+      }
+    }
+  }, [pages, activePageId]);
 
   // Global Keyboard Shortcut: Ctrl+P / Cmd+P or Ctrl+K / Cmd+K
   useEffect(() => {
@@ -860,6 +921,10 @@ const getLastSubtreeBlockId = (targetId: string, blocks: Block[]): string => {
     rawMatchStart?: number,
     rawMatchEnd?: number
   ) => {
+    const targetPage = pages.find((p) => p.id === pageId);
+    if (!targetPage || targetPage.isDeleted) {
+      return;
+    }
     setIsSearchOpen(false);
     setActivePageId(pageId);
 
@@ -878,12 +943,87 @@ const getLastSubtreeBlockId = (targetId: string, blocks: Block[]): string => {
     }
   };
 
-  const activePage = pages.find((page) => page.id === activePageId) || null;
+  const favoritePages = useMemo(() => {
+    return favoritesService.getFavoritePages(pages);
+  }, [pages]);
+
+  const recentPages = useMemo(() => {
+    return recentPagesService.getRecentPages(pages, 20);
+  }, [pages]);
+
+  const toggleFavorite = useCallback((pageId: string) => {
+    setPages((prev) => favoritesService.toggleFavorite(prev, pageId));
+  }, []);
+
+  const reorderFavorites = useCallback((draggedId: string, targetId: string) => {
+    setPages((prev) => favoritesService.reorderFavorites(prev, draggedId, targetId));
+  }, []);
+
+  const trashPages = useMemo(() => {
+    return trashService.getRootTrashPages(pages);
+  }, [pages]);
+
+  const restorePage = useCallback((pageId: string) => {
+    setPages((prev) => trashService.restorePage(prev, pageId));
+  }, []);
+
+  const permanentlyDeletePage = useCallback((pageId: string) => {
+    setPages((prev) => trashService.permanentlyDeletePage(prev, pageId));
+  }, []);
+
+  const emptyTrash = useCallback(() => {
+    setPages((prev) => trashService.emptyTrash(prev));
+  }, []);
+
+  const activePage = pages.find((page) => page.id === activePageId && !page.isDeleted) || null;
+
+  const exportWorkspace = useCallback(() => {
+    const snapshot: WorkspaceSnapshot = {
+      version: CURRENT_SCHEMA_VERSION,
+      timestamp: Date.now(),
+      pages,
+      activePageId,
+      sidebarOpen,
+    };
+    const jsonStr = persistenceService.exportWorkspace(snapshot);
+    const blob = new Blob([jsonStr], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `workspace-backup-${new Date().toISOString().slice(0, 10)}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }, [pages, activePageId, sidebarOpen]);
+
+  const importWorkspace = useCallback((jsonString: string) => {
+    try {
+      const snapshot = persistenceService.importWorkspace(jsonString);
+      setPages(snapshot.pages);
+      setActivePageIdState(snapshot.activePageId);
+      if (typeof snapshot.sidebarOpen === "boolean") {
+        setSidebarOpen(snapshot.sidebarOpen);
+      }
+      persistenceService.saveWorkspace(snapshot);
+    } catch (err: any) {
+      console.error("Failed to import workspace:", err);
+      alert(err?.message || "Failed to import workspace file.");
+    }
+  }, []);
 
   return (
     <AppContext.Provider
       value={{
         pages,
+        favoritePages,
+        recentPages,
+        toggleFavorite,
+        reorderFavorites,
+        trashPages,
+        restorePage,
+        permanentlyDeletePage,
+        emptyTrash,
         activePageId,
         activePage,
         sidebarOpen,
@@ -917,6 +1057,8 @@ const getLastSubtreeBlockId = (targetId: string, blocks: Block[]): string => {
         pendingSearchTarget,
         setPendingSearchTarget,
         navigateToResult,
+        exportWorkspace,
+        importWorkspace,
       }}
     >
       {children}
