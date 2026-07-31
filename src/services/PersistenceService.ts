@@ -1,4 +1,5 @@
 import { Page } from "../types";
+import { platform } from "../platform";
 
 export interface WorkspaceSnapshot {
   version: number;
@@ -35,13 +36,13 @@ export class PersistenceService {
         return true; // No changes to persist
       }
 
-      localStorage.setItem(STORAGE_KEY, jsonString);
+      platform.persistence.setItem(STORAGE_KEY, jsonString);
       // Legacy backwards-compatibility updates
-      localStorage.setItem(LEGACY_PAGES_KEY, JSON.stringify(snapshot.pages));
+      platform.persistence.setItem(LEGACY_PAGES_KEY, JSON.stringify(snapshot.pages));
       if (snapshot.activePageId) {
-        localStorage.setItem(LEGACY_ACTIVE_PAGE_KEY, snapshot.activePageId);
+        platform.persistence.setItem(LEGACY_ACTIVE_PAGE_KEY, snapshot.activePageId);
       } else {
-        localStorage.removeItem(LEGACY_ACTIVE_PAGE_KEY);
+        platform.persistence.removeItem(LEGACY_ACTIVE_PAGE_KEY);
       }
 
       this.lastSavedHash = jsonString;
@@ -59,7 +60,7 @@ export class PersistenceService {
    */
   public loadWorkspace(): WorkspaceSnapshot | null {
     try {
-      const raw = localStorage.getItem(STORAGE_KEY);
+      const raw = platform.persistence.getItem(STORAGE_KEY) as string | null;
       if (raw) {
         const parsed = JSON.parse(raw);
         const migrated = this.migrateSchema(parsed);
@@ -70,10 +71,10 @@ export class PersistenceService {
       }
 
       // Legacy fallback
-      const legacyPagesRaw = localStorage.getItem(LEGACY_PAGES_KEY);
+      const legacyPagesRaw = platform.persistence.getItem(LEGACY_PAGES_KEY) as string | null;
       if (legacyPagesRaw) {
         const pages = JSON.parse(legacyPagesRaw);
-        const activePageId = localStorage.getItem(LEGACY_ACTIVE_PAGE_KEY);
+        const activePageId = platform.persistence.getItem(LEGACY_ACTIVE_PAGE_KEY) as string | null;
         if (Array.isArray(pages) && pages.length > 0) {
           const snapshot: WorkspaceSnapshot = {
             version: CURRENT_SCHEMA_VERSION,
@@ -99,9 +100,9 @@ export class PersistenceService {
    */
   public clearWorkspace(): void {
     try {
-      localStorage.removeItem(STORAGE_KEY);
-      localStorage.removeItem(LEGACY_PAGES_KEY);
-      localStorage.removeItem(LEGACY_ACTIVE_PAGE_KEY);
+      platform.persistence.removeItem(STORAGE_KEY);
+      platform.persistence.removeItem(LEGACY_PAGES_KEY);
+      platform.persistence.removeItem(LEGACY_ACTIVE_PAGE_KEY);
       this.lastSavedHash = null;
     } catch (error) {
       console.error("[PersistenceService] Failed to clear workspace:", error);

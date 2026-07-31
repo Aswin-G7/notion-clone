@@ -1,6 +1,7 @@
 import React from "react";
 import { useApp } from "../context/AppContext";
 import { Page } from "../types";
+import { platform } from "../platform";
 import { Menu, Star, Trash2, ChevronRight, CheckCircle2, Search } from "lucide-react";
 
 export const Toolbar: React.FC = () => {
@@ -52,8 +53,11 @@ export const Toolbar: React.FC = () => {
     toggleFavorite(activePage.id);
   };
 
-  const handleDelete = () => {
-    if (window.confirm(`Are you sure you want to move "${activePage.title || "Untitled"}" to Trash?`)) {
+  const handleDelete = async () => {
+    const confirmed = await platform.dialogs.confirm(
+      `Are you sure you want to move "${activePage.title || "Untitled"}" to Trash?`
+    );
+    if (confirmed) {
       deletePage(activePage.id);
     }
   };

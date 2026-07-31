@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from "react";
 import { Check, Copy, ChevronDown } from "lucide-react";
+import { platform } from "../platform";
 import Prism from "prismjs";
 
 // Import Prism language components in strict dependency order
@@ -151,7 +152,7 @@ export const CodeBlock: React.FC<CodeBlockProps> = ({
   const handleCopy = (e: React.MouseEvent) => {
     e.stopPropagation();
     e.preventDefault();
-    navigator.clipboard.writeText(rawText);
+    platform.clipboard.writeText(rawText);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };

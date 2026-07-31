@@ -1,5 +1,6 @@
 import React, { useState, useRef } from "react";
 import { useApp } from "../context/AppContext";
+import { platform } from "../platform";
 import { SidebarItem } from "./SidebarItem";
 import { TemplateGalleryModal } from "./TemplateGalleryModal";
 import { TrashModal } from "./TrashModal";
@@ -47,20 +48,11 @@ export const Sidebar: React.FC = () => {
     importWorkspace,
   } = useApp();
 
-  const fileInputRef = useRef<HTMLInputElement>(null);
-
-  const handleImportFile = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      const content = event.target?.result as string;
-      if (content) {
-        importWorkspace(content);
-      }
-    };
-    reader.readAsText(file);
-    e.target.value = "";
+  const handleImportClick = async () => {
+    const fileResult = await platform.fileSystem.importFile(".json");
+    if (fileResult && fileResult.content) {
+      importWorkspace(fileResult.content);
+    }
   };
 
   const [templateModalOpen, setTemplateModalOpen] = useState(false);
@@ -408,20 +400,13 @@ export const Sidebar: React.FC = () => {
           </button>
           <button
             id="sidebar-import-workspace-btn"
-            onClick={() => fileInputRef.current?.click()}
+            onClick={handleImportClick}
             className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-md text-stone-600 hover:text-stone-900 hover:bg-stone-200/50 text-[13px] font-medium font-sans text-left transition-colors cursor-pointer"
             title="Import workspace JSON backup"
           >
             <Upload className="h-4 w-4 text-stone-400 shrink-0" />
             <span>Import Workspace</span>
           </button>
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept=".json"
-            onChange={handleImportFile}
-            className="hidden"
-          />
           <button
             id="sidebar-new-page-footer-btn"
             onClick={handleCreateRootPage}

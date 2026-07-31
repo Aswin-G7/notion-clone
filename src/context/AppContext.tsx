@@ -6,6 +6,7 @@ import { favoritesService } from "../services/FavoritesService";
 import { trashService } from "../services/TrashService";
 import { recentPagesService } from "../services/RecentPagesService";
 import { persistenceService, CURRENT_SCHEMA_VERSION, WorkspaceSnapshot } from "../services/PersistenceService";
+import { platform } from "../platform";
 import { resolveNextActivePage } from "../utils/navigation";
 
 export interface SearchNavigationTarget {
@@ -253,7 +254,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const setActivePageId = (id: string | null) => {
     if (id) {
       const targetPage = pages.find((p) => p.id === id);
-      if (!targetPage || targetPage.isDeleted) {
+      if (targetPage && targetPage.isDeleted) {
         return;
       }
       const now = Date.now();
@@ -265,9 +266,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setSelectedBlockId(null);
     triggerPageFocus();
     if (id) {
-      localStorage.setItem(ACTIVE_PAGE_KEY, id);
+      platform.persistence.setItem(ACTIVE_PAGE_KEY, id);
     } else {
-      localStorage.removeItem(ACTIVE_PAGE_KEY);
+      platform.persistence.removeItem(ACTIVE_PAGE_KEY);
     }
   };
 
@@ -407,7 +408,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         return p;
       })
     );
-    triggerPageFocus();
+    setActivePageId(pageId);
   };
 
   const deletePage = (id: string) => {
@@ -986,15 +987,8 @@ const getLastSubtreeBlockId = (targetId: string, blocks: Block[]): string => {
       sidebarOpen,
     };
     const jsonStr = persistenceService.exportWorkspace(snapshot);
-    const blob = new Blob([jsonStr], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `workspace-backup-${new Date().toISOString().slice(0, 10)}.json`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+    const filename = `workspace-backup-${new Date().toISOString().slice(0, 10)}.json`;
+    platform.fileSystem.exportFile(filename, jsonStr, "application/json");
   }, [pages, activePageId, sidebarOpen]);
 
   const importWorkspace = useCallback((jsonString: string) => {
@@ -1008,7 +1002,7 @@ const getLastSubtreeBlockId = (targetId: string, blocks: Block[]): string => {
       persistenceService.saveWorkspace(snapshot);
     } catch (err: any) {
       console.error("Failed to import workspace:", err);
-      alert(err?.message || "Failed to import workspace file.");
+      platform.dialogs.alert(err?.message || "Failed to import workspace file.");
     }
   }, []);
 

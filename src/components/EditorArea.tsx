@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { useApp } from "../context/AppContext";
+import { platform } from "../platform";
 import {
   Smile,
   Image as ImageIcon,
@@ -222,20 +223,9 @@ export const EditorArea: React.FC = () => {
   }, [calloutEmojiPickerBlockId]);
 
   React.useEffect(() => {
-    const handleNativeCopyCut = () => {
-      const selection = window.getSelection();
-      if (selection && !selection.isCollapsed && selection.toString().length > 0) {
-        setBlockClipboard(null);
-      }
-    };
-
-    document.addEventListener("copy", handleNativeCopyCut);
-    document.addEventListener("cut", handleNativeCopyCut);
-    return () => {
-      document.removeEventListener("copy", handleNativeCopyCut);
-      document.removeEventListener("cut", handleNativeCopyCut);
-    };
-  }, [setBlockClipboard]);
+    // Keep block clipboard intact across selection changes
+    return () => {};
+  }, []);
 
   const focusBlockInput = (blockId: string, caretPos: "start" | "end" = "end") => {
     const doFocus = () => {
@@ -298,12 +288,20 @@ export const EditorArea: React.FC = () => {
     [addBlock]
   );
 
+  const isInitialMountRef = React.useRef(true);
   const lastFocusedPageIdRef = React.useRef<string | null>(null);
   const lastFocusTokenRef = React.useRef<number>(-1);
 
   React.useEffect(() => {
     if (!activePage) {
       lastFocusedPageIdRef.current = null;
+      return;
+    }
+
+    if (isInitialMountRef.current) {
+      isInitialMountRef.current = false;
+      lastFocusedPageIdRef.current = activePage.id;
+      lastFocusTokenRef.current = focusToken;
       return;
     }
 
@@ -490,7 +488,24 @@ export const EditorArea: React.FC = () => {
     }
   };
 
+  const handleDuplicateBlock = (blockId: string) => {
+    if (!activePage) return;
+    const newBlockId = duplicateBlock(activePage.id, blockId);
+    if (newBlockId) {
+      setSelectedBlockId(null);
+      focusBlockInput(newBlockId, "start");
+    }
+  };
+
   React.useEffect(() => {
+    const hasTextSelection = (activeEl: Element | null): boolean => {
+      if (activeEl instanceof HTMLInputElement || activeEl instanceof HTMLTextAreaElement) {
+        return activeEl.selectionStart !== null && activeEl.selectionEnd !== null && activeEl.selectionStart !== activeEl.selectionEnd;
+      }
+      const sel = window.getSelection();
+      return !!(sel && !sel.isCollapsed && sel.toString().length > 0);
+    };
+
     const handleGlobalKeyDown = (e: KeyboardEvent) => {
       const activeEl = document.activeElement;
       const isEditing =
@@ -499,6 +514,36 @@ export const EditorArea: React.FC = () => {
           activeEl.tagName === "TEXTAREA" ||
           (activeEl as HTMLElement).isContentEditable ||
           !!activeEl.closest("[contenteditable='true']"));
+
+      const isCmdOrCtrl = e.metaKey || e.ctrlKey;
+
+      // Top priority: Global block clipboard paste (Ctrl+V) when blockClipboard exists and NO text is selected
+      if (isCmdOrCtrl && e.key.toLowerCase() === "v" && blockClipboard && !hasTextSelection(activeEl) && activePage) {
+        let targetBlockId = selectedBlockId;
+        if (!targetBlockId && activeEl) {
+          const wrapper = activeEl.closest("[id^='editor-block-wrapper-']");
+          if (wrapper) {
+            targetBlockId = wrapper.id.replace("editor-block-wrapper-", "");
+          }
+        }
+        if (!targetBlockId && activePage.blocks.length > 0) {
+          targetBlockId = activePage.blocks[activePage.blocks.length - 1].id;
+        }
+
+        if (targetBlockId) {
+          e.preventDefault();
+          e.stopPropagation();
+          const newBlockId = pasteBlock(activePage.id, targetBlockId);
+          if (newBlockId) {
+            setSelectedBlockId(null);
+            if (activeEl && "blur" in activeEl) {
+              (activeEl as HTMLElement).blur();
+            }
+            focusBlockInput(newBlockId, "start");
+          }
+          return;
+        }
+      }
 
       // 1. Editing Mode: Escape switches block to Block Selected Mode
       if (isEditing && e.key === "Escape") {
@@ -513,6 +558,22 @@ export const EditorArea: React.FC = () => {
           setSelectedBlockId(null);
         }
         return;
+      }
+
+      // Ctrl+C in Editing Mode when NO text selection exists -> copy current block
+      if (isEditing && isCmdOrCtrl && e.key.toLowerCase() === "c" && !hasTextSelection(activeEl) && activePage) {
+        const wrapper = activeEl.closest("[id^='editor-block-wrapper-']");
+        if (wrapper) {
+          const blockId = wrapper.id.replace("editor-block-wrapper-", "");
+          const currentBlock = activePage.blocks.find((b) => b.id === blockId);
+          if (currentBlock) {
+            e.preventDefault();
+            copyBlock(activePage.id, blockId);
+            const plainText = currentBlock.data?.text ? getPlainTextFromHtml(currentBlock.data.text) : "";
+            platform.clipboard.writeText(plainText).catch(() => {});
+            return;
+          }
+        }
       }
 
       // 2. Block Selected Mode
@@ -568,8 +629,7 @@ export const EditorArea: React.FC = () => {
           return;
         }
 
-        // Ctrl / Cmd shortcuts for Block Selected Mode: C, X, V
-        const isCmdOrCtrl = e.metaKey || e.ctrlKey;
+        // Ctrl / Cmd shortcuts for Block Selected Mode: C, X, V, D
         if (isCmdOrCtrl) {
           const key = e.key.toLowerCase();
           const currentBlock = activePage.blocks.find((b) => b.id === selectedBlockId);
@@ -577,10 +637,8 @@ export const EditorArea: React.FC = () => {
           if (key === "c" && currentBlock) {
             e.preventDefault();
             copyBlock(activePage.id, selectedBlockId);
-            if (navigator.clipboard && navigator.clipboard.writeText) {
-              const plainText = currentBlock.data?.text ? getPlainTextFromHtml(currentBlock.data.text) : "";
-              navigator.clipboard.writeText(plainText).catch(() => {});
-            }
+            const plainText = currentBlock.data?.text ? getPlainTextFromHtml(currentBlock.data.text) : "";
+            platform.clipboard.writeText(plainText).catch(() => {});
           } else if (key === "x" && currentBlock) {
             e.preventDefault();
             const adjacentBlockId = cutBlock(activePage.id, selectedBlockId);
@@ -614,6 +672,9 @@ export const EditorArea: React.FC = () => {
     setSelectedBlockId,
     handleDeleteBlock,
     isBlockVisible,
+    pages,
+    focusBlockInput,
+    handleDuplicateBlock,
   ]);
 
   const sensors = useSensors(
@@ -878,15 +939,6 @@ export const EditorArea: React.FC = () => {
     setSelectedBlockId(blockId);
     setContextMenuBlockId(blockId);
     setContextMenuPosition({ x: e.clientX, y: e.clientY });
-  };
-
-  const handleDuplicateBlock = (blockId: string) => {
-    if (!activePage) return;
-    const newBlockId = duplicateBlock(activePage.id, blockId);
-    if (newBlockId) {
-      setSelectedBlockId(null);
-      focusBlockInput(newBlockId, "start");
-    }
   };
 
   const handleTurnIntoBlock = (blockId: string, type: BlockType, extraData?: any) => {
@@ -1168,6 +1220,40 @@ export const EditorArea: React.FC = () => {
         const url = URL.createObjectURL(file);
         const newBlockId = addBlock(activePage.id, "image", "", selectedBlockId, { url, width: 100 });
         setSelectedBlockId(newBlockId);
+        return;
+      }
+    }
+
+    const activeEl = document.activeElement;
+    const hasTextSel = () => {
+      if (activeEl instanceof HTMLInputElement || activeEl instanceof HTMLTextAreaElement) {
+        return activeEl.selectionStart !== null && activeEl.selectionEnd !== null && activeEl.selectionStart !== activeEl.selectionEnd;
+      }
+      const sel = window.getSelection();
+      return !!(sel && !sel.isCollapsed && sel.toString().length > 0);
+    };
+
+    if (blockClipboard && !hasTextSel() && activePage && activePage.blocks.length > 0) {
+      e.preventDefault();
+      let targetBlockId = selectedBlockId;
+      if (!targetBlockId && activeEl) {
+        const wrapper = activeEl.closest("[id^='editor-block-wrapper-']");
+        if (wrapper) {
+          targetBlockId = wrapper.id.replace("editor-block-wrapper-", "");
+        }
+      }
+      if (!targetBlockId) {
+        targetBlockId = activePage.blocks[activePage.blocks.length - 1].id;
+      }
+      if (targetBlockId) {
+        const newBlockId = pasteBlock(activePage.id, targetBlockId);
+        if (newBlockId) {
+          setSelectedBlockId(null);
+          if (activeEl && "blur" in activeEl) {
+            (activeEl as HTMLElement).blur();
+          }
+          focusBlockInput(newBlockId, "start");
+        }
       }
     }
   };

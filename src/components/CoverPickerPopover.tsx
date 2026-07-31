@@ -1,5 +1,6 @@
 import React, { useState, useRef } from "react";
 import { Image as ImageIcon, Upload, Link as LinkIcon, X, Trash2, Check, Sparkles } from "lucide-react";
+import { platform } from "../platform";
 
 export const COVER_PRESETS = [
   {
@@ -72,29 +73,26 @@ export const CoverPickerPopover: React.FC<CoverPickerPopoverProps> = ({
     onSelectCover(trimmed);
   };
 
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
     if (!file.type.startsWith("image/")) {
-      alert("Please select a valid image file.");
+      await platform.dialogs.alert("Please select a valid image file.");
       return;
     }
 
     setIsUploading(true);
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      const result = event.target?.result as string;
-      if (result) {
-        onSelectCover(result);
+    try {
+      const dataUrl = await platform.fileSystem.readFileAsDataUrl(file);
+      if (dataUrl) {
+        onSelectCover(dataUrl);
       }
+    } catch {
+      await platform.dialogs.alert("Failed to read image file.");
+    } finally {
       setIsUploading(false);
-    };
-    reader.onerror = () => {
-      alert("Failed to read image file.");
-      setIsUploading(false);
-    };
-    reader.readAsDataURL(file);
+    }
   };
 
   return (
