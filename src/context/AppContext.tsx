@@ -90,100 +90,21 @@ const ACTIVE_PAGE_KEY = "notion_clone_active_page_id";
 
 const DEFAULT_PAGES: Page[] = [
   {
-    id: "getting-started",
-    title: "🚀 Getting Started",
-    icon: "🚀",
-    coverImage: "https://images.unsplash.com/photo-1507842217343-583bb7270b66?q=80&w=1200&auto=format&fit=crop",
-    isFavorite: true,
+    id: "page-initial",
+    title: "Untitled",
+    icon: "📄",
+    coverImage: null,
     parentId: null,
     children: [],
     blocks: [
       {
-        id: "gs-b1",
+        id: "block-initial",
         type: "heading",
-        data: { text: "Welcome to your custom Notion Workspace!", level: 1 }
-      },
-      {
-        id: "gs-b2",
-        type: "paragraph",
-        data: { text: "This is a beautiful, production-quality Notion Clone built using React, TypeScript, and Tailwind CSS." }
-      },
-      {
-        id: "gs-b3",
-        type: "heading",
-        data: { text: "Features:", level: 2 }
-      },
-      {
-        id: "gs-b4",
-        type: "paragraph",
-        data: { text: "• Interactive Sidebar: Organize, add, and delete pages seamlessly." }
-      },
-      {
-        id: "gs-b5",
-        type: "paragraph",
-        data: { text: "• Dynamic Child Pages: Create nested subpages directly within the document flow as inline block cards." }
-      },
-      {
-        id: "gs-b6",
-        type: "paragraph",
-        data: { text: "• Real-time Sync: Auto-saves any modifications to local storage immediately." }
+        data: { text: "Untitled", level: 1 }
       }
     ],
     createdAt: Date.now(),
     updatedAt: Date.now(),
-  },
-  {
-    id: "daily-notes",
-    title: "📝 Daily Journal",
-    icon: "📝",
-    coverImage: "https://images.unsplash.com/photo-1517842645767-c639042777db?q=80&w=1200&auto=format&fit=crop",
-    parentId: null,
-    children: [],
-    blocks: [
-      {
-        id: "dn-b1",
-        type: "heading",
-        data: { text: "Journal Entries", level: 2 }
-      },
-      {
-        id: "dn-b2",
-        type: "paragraph",
-        data: { text: "Use this space to track your daily highlights, reflections, and tasks." }
-      },
-      {
-        id: "dn-b3",
-        type: "paragraph",
-        data: { text: "• Practice React and Tailwind for 1 hour" }
-      },
-      {
-        id: "dn-b4",
-        type: "paragraph",
-        data: { text: "• Review project architecture" }
-      }
-    ],
-    createdAt: Date.now() - 3600000,
-    updatedAt: Date.now() - 3600000,
-  },
-  {
-    id: "recipes",
-    title: "🍳 Quick Recipes",
-    icon: "🍳",
-    parentId: null,
-    children: [],
-    blocks: [
-      {
-        id: "qr-b1",
-        type: "heading",
-        data: { text: "My Favorite Quick Meal: Avocado Toast with Poached Egg", level: 3 }
-      },
-      {
-        id: "qr-b2",
-        type: "paragraph",
-        data: { text: "Ingredients: 1 slice sourdough bread, 1/2 ripe avocado, 1 fresh egg, salt & pepper." }
-      }
-    ],
-    createdAt: Date.now() - 7200000,
-    updatedAt: Date.now() - 7200000,
   }
 ];
 

@@ -5,22 +5,27 @@ import {
   IFileSystemProvider,
   IDialogProvider,
   ISettingsProvider,
+  IWorkspaceProvider,
 } from "./interfaces";
 import { BrowserPersistenceProvider } from "./browser/BrowserPersistenceProvider";
 import { BrowserClipboardProvider } from "./browser/BrowserClipboardProvider";
 import { BrowserFileSystemProvider } from "./browser/BrowserFileSystemProvider";
 import { BrowserDialogProvider } from "./browser/BrowserDialogProvider";
 import { BrowserSettingsProvider } from "./browser/BrowserSettingsProvider";
+import { BrowserWorkspaceProvider } from "./browser/BrowserWorkspaceProvider";
 import { ElectronClipboardProvider } from "./electron/ElectronClipboardProvider";
 import { ElectronFileSystemProvider } from "./electron/ElectronFileSystemProvider";
 import { ElectronDialogProvider } from "./electron/ElectronDialogProvider";
 import { SQLitePersistenceProvider } from "./electron/SQLitePersistenceProvider";
+import { ElectronWorkspaceProvider } from "./electron/ElectronWorkspaceProvider";
 
 class PlatformBridgeContainer {
   private providers: PlatformProviders;
+  public readonly isElectron: boolean;
 
   constructor() {
     const isElectron = typeof window !== "undefined" && !!window.electronAPI;
+    this.isElectron = isElectron;
 
     this.providers = {
       persistence: isElectron ? new SQLitePersistenceProvider() : new BrowserPersistenceProvider(),
@@ -28,7 +33,16 @@ class PlatformBridgeContainer {
       fileSystem: isElectron ? new ElectronFileSystemProvider() : new BrowserFileSystemProvider(),
       dialogs: isElectron ? new ElectronDialogProvider() : new BrowserDialogProvider(),
       settings: new BrowserSettingsProvider(),
+      workspace: isElectron ? new ElectronWorkspaceProvider() : new BrowserWorkspaceProvider(),
     };
+  }
+
+  public get isDesktop(): boolean {
+    return this.isElectron;
+  }
+
+  public get isBrowser(): boolean {
+    return !this.isElectron;
   }
 
   public get persistence(): IPersistenceProvider {
@@ -49,6 +63,10 @@ class PlatformBridgeContainer {
 
   public get settings(): ISettingsProvider {
     return this.providers.settings;
+  }
+
+  public get workspace(): IWorkspaceProvider {
+    return this.providers.workspace;
   }
 
   /**

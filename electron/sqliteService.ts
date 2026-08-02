@@ -6,16 +6,41 @@ export class SQLiteService {
   private db: any = null;
   private dbPath: string = "";
   private isInitialized = false;
+  private isSaveLocked = false;
 
-  public async init(): Promise<void> {
-    if (this.isInitialized) return;
+  public setSaveLocked(locked: boolean): void {
+    this.isSaveLocked = locked;
+  }
 
-    const userDataPath = app?.getPath ? app.getPath("userData") : path.join(process.cwd(), ".app-data");
-    if (!fs.existsSync(userDataPath)) {
-      fs.mkdirSync(userDataPath, { recursive: true });
+  public close(): void {
+    if (this.db) {
+      try {
+        if (typeof this.db.close === "function") {
+          this.db.close();
+        }
+      } catch (e) {
+        console.error("[SQLiteService] Error closing database:", e);
+      }
+      this.db = null;
+      this.isInitialized = false;
+    }
+  }
+
+  public async init(targetDbPath?: string): Promise<void> {
+    if (targetDbPath) {
+      this.dbPath = targetDbPath;
+    } else if (!this.dbPath) {
+      const userDataPath = app?.getPath ? app.getPath("userData") : path.join(process.cwd(), ".app-data");
+      if (!fs.existsSync(userDataPath)) {
+        fs.mkdirSync(userDataPath, { recursive: true });
+      }
+      this.dbPath = path.join(userDataPath, "workspace.sqlite");
     }
 
-    this.dbPath = path.join(userDataPath, "workspace.sqlite");
+    const dbDir = path.dirname(this.dbPath);
+    if (!fs.existsSync(dbDir)) {
+      fs.mkdirSync(dbDir, { recursive: true });
+    }
 
     try {
       const { DatabaseSync } = await import("node:sqlite");
@@ -32,6 +57,15 @@ export class SQLiteService {
             all: (...args: any[]) => stmt.all(...args),
             run: (...args: any[]) => stmt.run(...args),
           };
+        },
+        close: () => {
+          try {
+            if (typeof nativeDb.close === "function") {
+              nativeDb.close();
+            }
+          } catch (err) {
+            console.error("[SQLiteService] Native DB close error:", err);
+          }
         },
       };
     } catch (e) {
@@ -51,6 +85,15 @@ export class SQLiteService {
               run: (...args: any[]) => stmt.run(...args),
             };
           },
+          close: () => {
+            try {
+              if (typeof nativeDb.close === "function") {
+                nativeDb.close();
+              }
+            } catch (err) {
+              console.error("[SQLiteService] Native DB close error:", err);
+            }
+          },
         };
       } catch (err) {
         console.error("[SQLiteService] Failed to initialize SQLite engine:", err);
@@ -59,6 +102,67 @@ export class SQLiteService {
 
     this.setupTables();
     this.isInitialized = true;
+  }
+
+  public async switchDatabase(newDbPath: string, isNewWorkspace: boolean = false, workspaceName?: string): Promise<void> {
+    this.isSaveLocked = true;
+    this.db = null;
+    this.isInitialized = false;
+    this.dbPath = newDbPath;
+    await this.init(newDbPath);
+
+    if (isNewWorkspace) {
+      try {
+        this.db?.exec("DELETE FROM kv_store; DELETE FROM pages; DELETE FROM blocks;");
+      } catch {}
+      this.initializeCleanWorkspace(workspaceName);
+    }
+  }
+
+  public initializeCleanWorkspace(workspaceName?: string): string {
+    if (!this.db) return "";
+    const pageId = `page-${Date.now()}`;
+    const blockId = `block-${Date.now()}`;
+    const now = Date.now();
+
+    const cleanSnapshot = {
+      version: 1,
+      timestamp: now,
+      pages: [
+        {
+          id: pageId,
+          title: "Untitled",
+          icon: "📄",
+          coverImage: null,
+          parentId: null,
+          children: [],
+          blocks: [
+            {
+              id: blockId,
+              type: "heading",
+              data: { text: "Untitled", level: 1 }
+            }
+          ],
+          createdAt: now,
+          updatedAt: now,
+        }
+      ],
+      activePageId: pageId,
+      sidebarOpen: true
+    };
+
+    const jsonStr = JSON.stringify(cleanSnapshot);
+    try {
+      const stmt = this.db.prepare(
+        "INSERT OR REPLACE INTO kv_store (key, value, updated_at) VALUES (?, ?, ?)"
+      );
+      stmt.run("notion_workspace_v1", jsonStr, now);
+      this.syncStructuredTables(jsonStr);
+    } catch (e) {
+      console.error("[SQLiteService] Failed to initialize clean workspace snapshot:", e);
+    }
+
+    return jsonStr;
   }
 
   private setupTables(): void {
@@ -109,6 +213,15 @@ export class SQLiteService {
     try {
       const stmt = this.db.prepare("SELECT value FROM kv_store WHERE key = ?");
       const row = stmt.get(key);
+
+      if (key === "notion_workspace_v1") {
+        if (!row || typeof row.value !== "string") {
+          const freshJson = this.initializeCleanWorkspace();
+          return this.formatSnapshotForRenderer(freshJson);
+        }
+        return this.formatSnapshotForRenderer(row.value);
+      }
+
       return row ? row.value : null;
     } catch (e) {
       console.error("[SQLiteService] getItem error:", e);
@@ -117,16 +230,26 @@ export class SQLiteService {
   }
 
   public setItem(key: string, value: string): void {
+    if (this.isSaveLocked) {
+      console.log("[SQLiteService] setItem ignored because save is locked during workspace transition");
+      return;
+    }
     if (!this.db) return;
     try {
+      let finalValue = value;
+
+      if (key === "notion_workspace_v1") {
+        finalValue = this.processAssetsAndSanitizeSnapshot(value);
+      }
+
       const now = Date.now();
       const stmt = this.db.prepare(
         "INSERT OR REPLACE INTO kv_store (key, value, updated_at) VALUES (?, ?, ?)"
       );
-      stmt.run(key, value, now);
+      stmt.run(key, finalValue, now);
 
       if (key === "notion_workspace_v1") {
-        this.syncStructuredTables(value);
+        this.syncStructuredTables(finalValue);
       }
     } catch (e) {
       console.error("[SQLiteService] setItem error:", e);
@@ -184,6 +307,106 @@ export class SQLiteService {
         this.db.exec("ROLLBACK;");
       } catch {}
       return false;
+    }
+  }
+
+  /**
+   * Scans snapshot JSON for base64 images, extracts them to the workspace assets/ folder,
+   * and replaces data URLs with relative asset paths (e.g. assets/cover-123.png).
+   */
+  private processAssetsAndSanitizeSnapshot(jsonString: string): string {
+    if (!this.dbPath) return jsonString;
+    const workspaceDir = path.dirname(this.dbPath);
+    const assetsDir = path.join(workspaceDir, "assets");
+
+    if (!fs.existsSync(assetsDir)) {
+      fs.mkdirSync(assetsDir, { recursive: true });
+    }
+
+    try {
+      const parsed = JSON.parse(jsonString);
+      if (!parsed || !Array.isArray(parsed.pages)) return jsonString;
+
+      const saveBase64Asset = (dataUrl: string, prefix: string): string => {
+        const matches = dataUrl.match(/^data:image\/([a-zA-Z0-9]+);base64,(.+)$/);
+        if (!matches) return dataUrl;
+
+        const ext = matches[1] === "jpeg" ? "jpg" : matches[1];
+        const base64Data = matches[2];
+        const filename = `${prefix}_${Date.now()}_${Math.random().toString(36).substring(2, 7)}.${ext}`;
+        const relativePath = `assets/${filename}`;
+        const fullPath = path.join(workspaceDir, relativePath);
+
+        fs.writeFileSync(fullPath, Buffer.from(base64Data, "base64"));
+        return relativePath;
+      };
+
+      const sanitizeUrl = (url: string | null | undefined, prefix: string): string | null | undefined => {
+        if (!url || typeof url !== "string") return url;
+        if (url.startsWith("data:image/")) {
+          return saveBase64Asset(url, prefix);
+        }
+        if (url.startsWith("app-asset://")) {
+          return url.replace(/^app-asset:\/\//, "");
+        }
+        return url;
+      };
+
+      for (const page of parsed.pages) {
+        if (page.coverImage) {
+          page.coverImage = sanitizeUrl(page.coverImage, `cover_${page.id}`);
+        }
+
+        if (Array.isArray(page.blocks)) {
+          for (const block of page.blocks) {
+            if (block.type === "image" && block.data && block.data.url) {
+              block.data.url = sanitizeUrl(block.data.url, `img_${block.id}`);
+            }
+          }
+        }
+      }
+
+      return JSON.stringify(parsed);
+    } catch (e) {
+      console.error("[SQLiteService] Failed to process assets:", e);
+      return jsonString;
+    }
+  }
+
+  /**
+   * Converts relative asset paths (e.g. assets/cover.png) to custom protocol app-asset://
+   * URLs so the renderer can display images loaded directly from the workspace folder.
+   */
+  private formatSnapshotForRenderer(jsonString: string): string {
+    try {
+      const parsed = JSON.parse(jsonString);
+      if (!parsed || !Array.isArray(parsed.pages)) return jsonString;
+
+      const toAppAssetUrl = (url: string | null | undefined): string | null | undefined => {
+        if (!url || typeof url !== "string") return url;
+        if (url.startsWith("assets/")) {
+          return `app-asset://${url}`;
+        }
+        return url;
+      };
+
+      for (const page of parsed.pages) {
+        if (page.coverImage) {
+          page.coverImage = toAppAssetUrl(page.coverImage);
+        }
+
+        if (Array.isArray(page.blocks)) {
+          for (const block of page.blocks) {
+            if (block.type === "image" && block.data && block.data.url) {
+              block.data.url = toAppAssetUrl(block.data.url);
+            }
+          }
+        }
+      }
+
+      return JSON.stringify(parsed);
+    } catch (e) {
+      return jsonString;
     }
   }
 

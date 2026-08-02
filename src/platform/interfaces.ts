@@ -38,10 +38,37 @@ export interface ISettingsProvider {
   removeSetting(key: string): Promise<void> | void;
 }
 
+export interface WorkspaceInfo {
+  path: string;
+  name: string;
+  createdAt?: number;
+  updatedAt?: number;
+}
+
+export interface RecentWorkspace {
+  path: string;
+  name: string;
+  lastOpenedAt: number;
+}
+
+export interface IWorkspaceProvider {
+  isSupported: boolean;
+  getActive(): Promise<WorkspaceInfo | null>;
+  selectFolder(): Promise<string | null>;
+  create(folderPath?: string, name?: string): Promise<WorkspaceInfo | null>;
+  open(folderPath?: string): Promise<WorkspaceInfo | null>;
+  switch(folderPath: string): Promise<WorkspaceInfo | null>;
+  close(): Promise<boolean>;
+  getRecents(): Promise<RecentWorkspace[]>;
+  removeRecent(folderPath: string): Promise<boolean>;
+  delete(folderPath: string): Promise<boolean>;
+}
+
 export interface PlatformProviders {
   persistence: IPersistenceProvider;
   clipboard: IClipboardProvider;
   fileSystem: IFileSystemProvider;
   dialogs: IDialogProvider;
   settings: ISettingsProvider;
+  workspace: IWorkspaceProvider;
 }

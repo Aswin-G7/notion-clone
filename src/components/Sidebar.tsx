@@ -1,11 +1,13 @@
-import React, { useState, useRef } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import { useApp } from "../context/AppContext";
 import { platform } from "../platform";
 import { SidebarItem } from "./SidebarItem";
 import { TemplateGalleryModal } from "./TemplateGalleryModal";
 import { TrashModal } from "./TrashModal";
 import { PageContextMenu } from "./PageContextMenu";
+import { WorkspaceSelectorPopover } from "./WorkspaceSelectorPopover";
 import { Page } from "../types";
+import { WorkspaceInfo } from "../types/electron";
 import {
   Plus,
   Search,
@@ -59,6 +61,16 @@ export const Sidebar: React.FC = () => {
   const [trashModalOpen, setTrashModalOpen] = useState(false);
   const [isFavoritesExpanded, setIsFavoritesExpanded] = useState(true);
   const [isRecentExpanded, setIsRecentExpanded] = useState(true);
+  const [showWorkspaceSelector, setShowWorkspaceSelector] = useState(false);
+  const [activeWorkspaceInfo, setActiveWorkspaceInfo] = useState<WorkspaceInfo | null>(null);
+
+  useEffect(() => {
+    if (platform.workspace.isSupported) {
+      platform.workspace.getActive().then((ws) => {
+        if (ws) setActiveWorkspaceInfo(ws);
+      });
+    }
+  }, []);
 
   // Drag and drop state for favorites reordering
   const [draggedFavId, setDraggedFavId] = useState<string | null>(null);
@@ -147,20 +159,49 @@ export const Sidebar: React.FC = () => {
         }`}
       >
         {/* Workspace Profile / Header */}
-        <div className="flex items-center justify-between px-3 py-3 shrink-0">
-          <div className="flex items-center gap-2 overflow-hidden">
-            <div className="flex items-center justify-center w-6 h-6 rounded bg-stone-800 text-stone-100 font-bold font-display text-[12px] shrink-0">
-              N
+        <div className="relative flex items-center justify-between px-3 py-3 shrink-0">
+          {platform.workspace.isSupported ? (
+            <button
+              id="workspace-switcher-btn"
+              type="button"
+              onClick={() => setShowWorkspaceSelector(!showWorkspaceSelector)}
+              className="flex items-center gap-2 overflow-hidden hover:bg-stone-200/50 p-1 rounded-lg transition-colors cursor-pointer text-left min-w-0"
+              title="Manage & switch workspaces"
+            >
+              <div className="flex items-center justify-center w-6 h-6 rounded bg-stone-800 text-stone-100 font-bold font-display text-[12px] shrink-0">
+                {activeWorkspaceInfo?.name?.[0]?.toUpperCase() || "N"}
+              </div>
+              <div className="flex flex-col min-w-0">
+                <div className="flex items-center gap-1">
+                  <span className="text-[13px] font-semibold text-stone-800 truncate font-sans">
+                    {activeWorkspaceInfo?.name || "Personal Workspace"}
+                  </span>
+                  <ChevronDown className="h-3.5 w-3.5 text-stone-400 shrink-0" />
+                </div>
+                <span className="text-[10px] text-stone-400 truncate">
+                  Desktop Folder Workspace
+                </span>
+              </div>
+            </button>
+          ) : (
+            <div className="flex items-center gap-2 overflow-hidden p-1 rounded-lg min-w-0">
+              <div className="flex items-center justify-center w-6 h-6 rounded bg-stone-800 text-stone-100 font-bold font-display text-[12px] shrink-0">
+                N
+              </div>
+              <div className="flex flex-col min-w-0">
+                <span className="text-[13px] font-semibold text-stone-800 truncate font-sans">
+                  Personal Workspace
+                </span>
+                <span className="text-[10px] text-stone-400 truncate">
+                  Free Plan • Aswin
+                </span>
+              </div>
             </div>
-            <div className="flex flex-col min-w-0">
-              <span className="text-[13px] font-semibold text-stone-800 truncate font-sans">
-                Personal Workspace
-              </span>
-              <span className="text-[10px] text-stone-400 truncate">
-                Free Plan • Aswin
-              </span>
-            </div>
-          </div>
+          )}
+
+          {platform.workspace.isSupported && showWorkspaceSelector && (
+            <WorkspaceSelectorPopover onClose={() => setShowWorkspaceSelector(false)} />
+          )}
 
           <div className="flex items-center gap-1 shrink-0">
             {/* Collapse Sidebar Button (for desktop) */}

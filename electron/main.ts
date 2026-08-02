@@ -1,14 +1,28 @@
-import { app, BrowserWindow, ipcMain, dialog, clipboard } from "electron";
+import { app, BrowserWindow, ipcMain, dialog, clipboard, protocol, net } from "electron";
 import path from "path";
 import fs from "fs/promises";
-import { fileURLToPath } from "url";
+import existsSync from "fs";
+import { fileURLToPath, pathToFileURL } from "url";
 import { sqliteService } from "./sqliteService.js";
+import { workspaceManager } from "./workspaceManager.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-let mainWindow: BrowserWindow | null = null;
+protocol.registerSchemesAsPrivileged([
+  {
+    scheme: "app-asset",
+    privileges: {
+      standard: true,
+      secure: true,
+      supportFetchAPI: true,
+      corsEnabled: true,
+      bypassCSP: true,
+    },
+  },
+]);
 
+let mainWindow: BrowserWindow | null = null;
 const isDev = process.env.NODE_ENV === "development" || !app.isPackaged;
 
 async function createWindow() {
@@ -40,6 +54,7 @@ async function createWindow() {
 }
 
 function setupIpcHandlers() {
+  // Clipboard
   ipcMain.handle("clipboard:writeText", async (_event, text: string) => {
     try {
       clipboard.writeText(text);
@@ -57,6 +72,7 @@ function setupIpcHandlers() {
     }
   });
 
+  // Dialogs
   ipcMain.handle("dialog:alert", async (_event, message: string) => {
     if (!mainWindow) return;
     await dialog.showMessageBox(mainWindow, {
@@ -78,6 +94,7 @@ function setupIpcHandlers() {
     return result.response === 1;
   });
 
+  // Files
   ipcMain.handle(
     "file:exportFile",
     async (_event, { filename, content }: { filename: string; content: string }) => {
@@ -141,10 +158,197 @@ function setupIpcHandlers() {
       return sqliteService.migrateLocalStorage(data);
     }
   );
+
+  // Workspace IPC handlers
+  ipcMain.handle("workspace:getActive", async () => {
+    return workspaceManager.getActiveWorkspaceInfo();
+  });
+
+  ipcMain.handle("workspace:selectFolder", async () => {
+    return workspaceManager.selectWorkspaceFolder(mainWindow);
+  });
+
+  ipcMain.handle("workspace:create", async (_event, folderPath?: string, name?: string) => {
+    let targetPath = folderPath;
+    if (!targetPath) {
+      targetPath = await workspaceManager.selectWorkspaceFolder(mainWindow) || undefined;
+    }
+    if (!targetPath) return null;
+
+    sqliteService.setSaveLocked(true);
+
+    workspaceManager.createBackup();
+    const info = workspaceManager.createWorkspace(targetPath, name);
+    const dbPath = path.join(targetPath, "workspace.sqlite");
+
+    await sqliteService.switchDatabase(dbPath, true, name || info.name);
+
+    if (mainWindow) {
+      mainWindow.reload();
+    }
+
+    setTimeout(() => {
+      sqliteService.setSaveLocked(false);
+    }, 800);
+
+    return info;
+  });
+
+  ipcMain.handle("workspace:open", async (_event, folderPath?: string) => {
+    let targetPath = folderPath;
+    if (!targetPath) {
+      targetPath = await workspaceManager.selectWorkspaceFolder(mainWindow) || undefined;
+    }
+    if (!targetPath) return null;
+
+    sqliteService.setSaveLocked(true);
+
+    workspaceManager.createBackup();
+    const info = workspaceManager.openWorkspace(targetPath);
+    const dbPath = path.join(targetPath, "workspace.sqlite");
+
+    await sqliteService.switchDatabase(dbPath, false);
+
+    if (mainWindow) {
+      mainWindow.reload();
+    }
+
+    setTimeout(() => {
+      sqliteService.setSaveLocked(false);
+    }, 800);
+
+    return info;
+  });
+
+  ipcMain.handle("workspace:switch", async (_event, folderPath: string) => {
+    sqliteService.setSaveLocked(true);
+
+    workspaceManager.createBackup();
+    const info = workspaceManager.openWorkspace(folderPath);
+    const dbPath = path.join(folderPath, "workspace.sqlite");
+
+    await sqliteService.switchDatabase(dbPath, false);
+
+    if (mainWindow) {
+      mainWindow.reload();
+    }
+
+    setTimeout(() => {
+      sqliteService.setSaveLocked(false);
+    }, 800);
+
+    return info;
+  });
+
+  ipcMain.handle("workspace:close", async () => {
+    workspaceManager.createBackup();
+    workspaceManager.closeWorkspace();
+    return true;
+  });
+
+  ipcMain.handle("workspace:getRecents", async () => {
+    return workspaceManager.getRecentWorkspaces();
+  });
+
+  ipcMain.handle("workspace:removeRecent", async (_event, folderPath: string) => {
+    return workspaceManager.removeRecentWorkspace(folderPath);
+  });
+
+  ipcMain.handle("workspace:delete", async (_event, folderPath: string) => {
+    if (!folderPath) return false;
+
+    // Show native confirmation dialog explaining full workspace deletion
+    if (mainWindow) {
+      const confirmResult = await dialog.showMessageBox(mainWindow, {
+        type: "warning",
+        title: "Delete Workspace Permanently",
+        message: "Are you sure you want to permanently delete this workspace?",
+        detail: `This action CANNOT be undone. The workspace directory and all its contents will be permanently deleted from disk:\n\n• workspace.sqlite (Database & Pages)\n• assets/ (Images & Attachments)\n• backups/ (Database Backups)\n• settings.json (Workspace Config)\n• All other workspace-specific files\n\nTarget Workspace Path:\n${folderPath}`,
+        buttons: ["Cancel", "Delete Workspace"],
+        defaultId: 0,
+        cancelId: 0,
+        noLink: true,
+      });
+
+      if (confirmResult.response !== 1) {
+        return false;
+      }
+    }
+
+    const activePath = workspaceManager.getActiveWorkspacePath();
+    const isActive = activePath === folderPath;
+
+    if (isActive) {
+      // Lock saves and close SQLite database to release file locks on workspace.sqlite
+      sqliteService.setSaveLocked(true);
+      sqliteService.close();
+    }
+
+    // Perform deletion of folder and removal from recents
+    const success = workspaceManager.deleteWorkspaceFolder(folderPath);
+
+    if (isActive) {
+      // Find next available valid workspace in recents
+      const recents = workspaceManager.getRecentWorkspaces();
+      const validNext = recents.find((r) => r.path !== folderPath && existsSync.existsSync(r.path));
+
+      let nextWsPath: string;
+      if (validNext) {
+        nextWsPath = workspaceManager.openWorkspace(validNext.path).path;
+      } else {
+        const userDataPath = app.getPath("userData");
+        nextWsPath = await workspaceManager.init() || path.join(userDataPath, "workspaces", "Default Workspace");
+      }
+
+      const dbPath = path.join(nextWsPath, "workspace.sqlite");
+      await sqliteService.switchDatabase(dbPath, false);
+
+      if (mainWindow) {
+        mainWindow.reload();
+      }
+
+      setTimeout(() => {
+        sqliteService.setSaveLocked(false);
+      }, 800);
+    }
+
+    return success;
+  });
+}
+
+function setupAssetProtocol() {
+  protocol.handle("app-asset", async (request) => {
+    const activePath = workspaceManager.getActiveWorkspacePath();
+    if (!activePath) {
+      return new Response("No active workspace", { status: 404 });
+    }
+
+    const relativeUrl = request.url.replace(/^app-asset:\/\//, "");
+    const relativeClean = relativeUrl.startsWith("assets/")
+      ? relativeUrl
+      : path.join("assets", relativeUrl);
+
+    const fullFilePath = path.join(activePath, relativeClean);
+    try {
+      return await net.fetch(pathToFileURL(fullFilePath).toString());
+    } catch (err) {
+      console.error("[app-asset] Error serving asset file:", fullFilePath, err);
+      return new Response("Asset file not found", { status: 404 });
+    }
+  });
 }
 
 app.whenReady().then(async () => {
-  await sqliteService.init();
+  setupAssetProtocol();
+
+  const activeWsPath = await workspaceManager.init();
+  if (activeWsPath) {
+    const dbPath = path.join(activeWsPath, "workspace.sqlite");
+    await sqliteService.init(dbPath);
+  } else {
+    await sqliteService.init();
+  }
+
   setupIpcHandlers();
   createWindow();
 
@@ -156,6 +360,7 @@ app.whenReady().then(async () => {
 });
 
 app.on("window-all-closed", () => {
+  workspaceManager.createBackup();
   if (process.platform !== "darwin") {
     app.quit();
   }

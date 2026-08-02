@@ -1,5 +1,18 @@
 import { contextBridge, ipcRenderer } from "electron";
 
+export interface WorkspaceInfo {
+  path: string;
+  name: string;
+  createdAt?: number;
+  updatedAt?: number;
+}
+
+export interface RecentWorkspace {
+  path: string;
+  name: string;
+  lastOpenedAt: number;
+}
+
 export interface IElectronAPI {
   isElectron: boolean;
   clipboard: {
@@ -24,6 +37,17 @@ export interface IElectronAPI {
     clear: () => Promise<boolean>;
     migrateLocalStorage: (data: Record<string, string>) => Promise<boolean>;
     isMigrated: () => boolean;
+  };
+  workspace: {
+    getActive: () => Promise<WorkspaceInfo | null>;
+    selectFolder: () => Promise<string | null>;
+    create: (folderPath?: string, name?: string) => Promise<WorkspaceInfo | null>;
+    open: (folderPath?: string) => Promise<WorkspaceInfo | null>;
+    switch: (folderPath: string) => Promise<WorkspaceInfo | null>;
+    close: () => Promise<boolean>;
+    getRecents: () => Promise<RecentWorkspace[]>;
+    removeRecent: (folderPath: string) => Promise<boolean>;
+    delete: (folderPath: string) => Promise<boolean>;
   };
 }
 
@@ -53,6 +77,17 @@ const electronAPI: IElectronAPI = {
     clear: () => ipcRenderer.invoke("db:clear"),
     migrateLocalStorage: (data: Record<string, string>) => ipcRenderer.invoke("db:migrateLocalStorage", data),
     isMigrated: () => ipcRenderer.sendSync("db:isMigratedSync"),
+  },
+  workspace: {
+    getActive: () => ipcRenderer.invoke("workspace:getActive"),
+    selectFolder: () => ipcRenderer.invoke("workspace:selectFolder"),
+    create: (folderPath?: string, name?: string) => ipcRenderer.invoke("workspace:create", folderPath, name),
+    open: (folderPath?: string) => ipcRenderer.invoke("workspace:open", folderPath),
+    switch: (folderPath: string) => ipcRenderer.invoke("workspace:switch", folderPath),
+    close: () => ipcRenderer.invoke("workspace:close"),
+    getRecents: () => ipcRenderer.invoke("workspace:getRecents"),
+    removeRecent: (folderPath: string) => ipcRenderer.invoke("workspace:removeRecent", folderPath),
+    delete: (folderPath: string) => ipcRenderer.invoke("workspace:delete", folderPath),
   },
 };
 

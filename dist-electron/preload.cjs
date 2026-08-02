@@ -40,6 +40,17 @@ var electronAPI = {
     clear: () => import_electron.ipcRenderer.invoke("db:clear"),
     migrateLocalStorage: (data) => import_electron.ipcRenderer.invoke("db:migrateLocalStorage", data),
     isMigrated: () => import_electron.ipcRenderer.sendSync("db:isMigratedSync")
+  },
+  workspace: {
+    getActive: () => import_electron.ipcRenderer.invoke("workspace:getActive"),
+    selectFolder: () => import_electron.ipcRenderer.invoke("workspace:selectFolder"),
+    create: (folderPath, name) => import_electron.ipcRenderer.invoke("workspace:create", folderPath, name),
+    open: (folderPath) => import_electron.ipcRenderer.invoke("workspace:open", folderPath),
+    switch: (folderPath) => import_electron.ipcRenderer.invoke("workspace:switch", folderPath),
+    close: () => import_electron.ipcRenderer.invoke("workspace:close"),
+    getRecents: () => import_electron.ipcRenderer.invoke("workspace:getRecents"),
+    removeRecent: (folderPath) => import_electron.ipcRenderer.invoke("workspace:removeRecent", folderPath),
+    delete: (folderPath) => import_electron.ipcRenderer.invoke("workspace:delete", folderPath)
   }
 };
 import_electron.contextBridge.exposeInMainWorld("electronAPI", electronAPI);
