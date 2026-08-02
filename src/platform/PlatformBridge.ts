@@ -14,6 +14,7 @@ import { BrowserSettingsProvider } from "./browser/BrowserSettingsProvider";
 import { ElectronClipboardProvider } from "./electron/ElectronClipboardProvider";
 import { ElectronFileSystemProvider } from "./electron/ElectronFileSystemProvider";
 import { ElectronDialogProvider } from "./electron/ElectronDialogProvider";
+import { SQLitePersistenceProvider } from "./electron/SQLitePersistenceProvider";
 
 class PlatformBridgeContainer {
   private providers: PlatformProviders;
@@ -22,7 +23,7 @@ class PlatformBridgeContainer {
     const isElectron = typeof window !== "undefined" && !!window.electronAPI;
 
     this.providers = {
-      persistence: new BrowserPersistenceProvider(),
+      persistence: isElectron ? new SQLitePersistenceProvider() : new BrowserPersistenceProvider(),
       clipboard: isElectron ? new ElectronClipboardProvider() : new BrowserClipboardProvider(),
       fileSystem: isElectron ? new ElectronFileSystemProvider() : new BrowserFileSystemProvider(),
       dialogs: isElectron ? new ElectronDialogProvider() : new BrowserDialogProvider(),

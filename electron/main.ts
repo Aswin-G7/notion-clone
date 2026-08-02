@@ -2,6 +2,7 @@ import { app, BrowserWindow, ipcMain, dialog, clipboard } from "electron";
 import path from "path";
 import fs from "fs/promises";
 import { fileURLToPath } from "url";
+import { sqliteService } from "./sqliteService.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -109,9 +110,41 @@ function setupIpcHandlers() {
   ipcMain.handle("app:getVersion", async () => {
     return app.getVersion();
   });
+
+  // Database / SQLite IPC handlers
+  ipcMain.on("db:getItemSync", (event, key: string) => {
+    event.returnValue = sqliteService.getItem(key);
+  });
+
+  ipcMain.on("db:isMigratedSync", (event) => {
+    event.returnValue = sqliteService.isMigrated();
+  });
+
+  ipcMain.handle("db:setItem", async (_event, key: string, value: string) => {
+    sqliteService.setItem(key, value);
+    return true;
+  });
+
+  ipcMain.handle("db:removeItem", async (_event, key: string) => {
+    sqliteService.removeItem(key);
+    return true;
+  });
+
+  ipcMain.handle("db:clear", async () => {
+    sqliteService.clear();
+    return true;
+  });
+
+  ipcMain.handle(
+    "db:migrateLocalStorage",
+    async (_event, data: Record<string, string>) => {
+      return sqliteService.migrateLocalStorage(data);
+    }
+  );
 }
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
+  await sqliteService.init();
   setupIpcHandlers();
   createWindow();
 

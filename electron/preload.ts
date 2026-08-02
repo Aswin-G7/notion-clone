@@ -17,6 +17,14 @@ export interface IElectronAPI {
   app: {
     getVersion: () => Promise<string>;
   };
+  database: {
+    getItem: (key: string) => string | null;
+    setItem: (key: string, value: string) => Promise<boolean>;
+    removeItem: (key: string) => Promise<boolean>;
+    clear: () => Promise<boolean>;
+    migrateLocalStorage: (data: Record<string, string>) => Promise<boolean>;
+    isMigrated: () => boolean;
+  };
 }
 
 const electronAPI: IElectronAPI = {
@@ -37,6 +45,14 @@ const electronAPI: IElectronAPI = {
   },
   app: {
     getVersion: () => ipcRenderer.invoke("app:getVersion"),
+  },
+  database: {
+    getItem: (key: string) => ipcRenderer.sendSync("db:getItemSync", key),
+    setItem: (key: string, value: string) => ipcRenderer.invoke("db:setItem", key, value),
+    removeItem: (key: string) => ipcRenderer.invoke("db:removeItem", key),
+    clear: () => ipcRenderer.invoke("db:clear"),
+    migrateLocalStorage: (data: Record<string, string>) => ipcRenderer.invoke("db:migrateLocalStorage", data),
+    isMigrated: () => ipcRenderer.sendSync("db:isMigratedSync"),
   },
 };
 

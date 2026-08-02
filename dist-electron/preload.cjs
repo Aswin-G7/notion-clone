@@ -32,6 +32,14 @@ var electronAPI = {
   },
   app: {
     getVersion: () => import_electron.ipcRenderer.invoke("app:getVersion")
+  },
+  database: {
+    getItem: (key) => import_electron.ipcRenderer.sendSync("db:getItemSync", key),
+    setItem: (key, value) => import_electron.ipcRenderer.invoke("db:setItem", key, value),
+    removeItem: (key) => import_electron.ipcRenderer.invoke("db:removeItem", key),
+    clear: () => import_electron.ipcRenderer.invoke("db:clear"),
+    migrateLocalStorage: (data) => import_electron.ipcRenderer.invoke("db:migrateLocalStorage", data),
+    isMigrated: () => import_electron.ipcRenderer.sendSync("db:isMigratedSync")
   }
 };
 import_electron.contextBridge.exposeInMainWorld("electronAPI", electronAPI);

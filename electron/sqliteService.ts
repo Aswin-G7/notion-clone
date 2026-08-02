@@ -1,70 +1,69 @@
-// electron/main.ts
-import { app as app2, BrowserWindow, ipcMain, dialog, clipboard } from "electron";
-import path2 from "path";
-import fs2 from "fs/promises";
-import { fileURLToPath } from "url";
-
-// electron/sqliteService.ts
 import path from "path";
 import fs from "fs";
 import { app } from "electron";
-var SQLiteService = class {
-  constructor() {
-    this.db = null;
-    this.dbPath = "";
-    this.isInitialized = false;
-  }
-  async init() {
+
+export class SQLiteService {
+  private db: any = null;
+  private dbPath: string = "";
+  private isInitialized = false;
+
+  public async init(): Promise<void> {
     if (this.isInitialized) return;
+
     const userDataPath = app?.getPath ? app.getPath("userData") : path.join(process.cwd(), ".app-data");
     if (!fs.existsSync(userDataPath)) {
       fs.mkdirSync(userDataPath, { recursive: true });
     }
+
     this.dbPath = path.join(userDataPath, "workspace.sqlite");
+
     try {
       const { DatabaseSync } = await import("node:sqlite");
       const nativeDb = new DatabaseSync(this.dbPath);
       try {
         nativeDb.exec("PRAGMA journal_mode = WAL; PRAGMA busy_timeout = 5000;");
-      } catch {
-      }
+      } catch {}
       this.db = {
-        exec: (sql) => nativeDb.exec(sql),
-        prepare: (sql) => {
+        exec: (sql: string) => nativeDb.exec(sql),
+        prepare: (sql: string) => {
           const stmt = nativeDb.prepare(sql);
           return {
-            get: (...args) => stmt.get(...args),
-            all: (...args) => stmt.all(...args),
-            run: (...args) => stmt.run(...args)
+            get: (...args: any[]) => stmt.get(...args),
+            all: (...args: any[]) => stmt.all(...args),
+            run: (...args: any[]) => stmt.run(...args),
           };
-        }
+        },
       };
     } catch (e) {
       try {
+        // @ts-ignore
         const BetterSqlite3 = (await import("better-sqlite3")).default;
         const nativeDb = new BetterSqlite3(this.dbPath);
         nativeDb.pragma("journal_mode = WAL");
         nativeDb.pragma("busy_timeout = 5000");
         this.db = {
-          exec: (sql) => nativeDb.exec(sql),
-          prepare: (sql) => {
+          exec: (sql: string) => nativeDb.exec(sql),
+          prepare: (sql: string) => {
             const stmt = nativeDb.prepare(sql);
             return {
-              get: (...args) => stmt.get(...args),
-              all: (...args) => stmt.all(...args),
-              run: (...args) => stmt.run(...args)
+              get: (...args: any[]) => stmt.get(...args),
+              all: (...args: any[]) => stmt.all(...args),
+              run: (...args: any[]) => stmt.run(...args),
             };
-          }
+          },
         };
       } catch (err) {
         console.error("[SQLiteService] Failed to initialize SQLite engine:", err);
       }
     }
+
     this.setupTables();
     this.isInitialized = true;
   }
-  setupTables() {
+
+  private setupTables(): void {
     if (!this.db) return;
+
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS meta (
         key TEXT PRIMARY KEY,
@@ -104,7 +103,8 @@ var SQLiteService = class {
       INSERT OR REPLACE INTO meta (key, value) VALUES ('schema_version', '1');
     `);
   }
-  getItem(key) {
+
+  public getItem(key: string): string | null {
     if (!this.db) return null;
     try {
       const stmt = this.db.prepare("SELECT value FROM kv_store WHERE key = ?");
@@ -115,7 +115,8 @@ var SQLiteService = class {
       return null;
     }
   }
-  setItem(key, value) {
+
+  public setItem(key: string, value: string): void {
     if (!this.db) return;
     try {
       const now = Date.now();
@@ -123,6 +124,7 @@ var SQLiteService = class {
         "INSERT OR REPLACE INTO kv_store (key, value, updated_at) VALUES (?, ?, ?)"
       );
       stmt.run(key, value, now);
+
       if (key === "notion_workspace_v1") {
         this.syncStructuredTables(value);
       }
@@ -130,7 +132,8 @@ var SQLiteService = class {
       console.error("[SQLiteService] setItem error:", e);
     }
   }
-  removeItem(key) {
+
+  public removeItem(key: string): void {
     if (!this.db) return;
     try {
       const stmt = this.db.prepare("DELETE FROM kv_store WHERE key = ?");
@@ -139,7 +142,8 @@ var SQLiteService = class {
       console.error("[SQLiteService] removeItem error:", e);
     }
   }
-  clear() {
+
+  public clear(): void {
     if (!this.db) return;
     try {
       this.db.exec("DELETE FROM kv_store; DELETE FROM pages; DELETE FROM blocks;");
@@ -147,7 +151,8 @@ var SQLiteService = class {
       console.error("[SQLiteService] clear error:", e);
     }
   }
-  isMigrated() {
+
+  public isMigrated(): boolean {
     if (!this.db) return false;
     try {
       const stmt = this.db.prepare(
@@ -160,7 +165,8 @@ var SQLiteService = class {
       return false;
     }
   }
-  migrateLocalStorage(data) {
+
+  public migrateLocalStorage(data: Record<string, string>): boolean {
     if (!this.db) return false;
     try {
       this.db.exec("BEGIN IMMEDIATE;");
@@ -176,14 +182,14 @@ var SQLiteService = class {
       console.error("[SQLiteService] migrateLocalStorage error, rolling back:", e);
       try {
         this.db.exec("ROLLBACK;");
-      } catch {
-      }
+      } catch {}
       return false;
     }
   }
-  syncStructuredTables(jsonSnapshot) {
+
+  private syncStructuredTables(jsonSnapshot: string): void {
     if (!this.db) return;
-    let parsed;
+    let parsed: any;
     try {
       parsed = JSON.parse(jsonSnapshot);
       if (!parsed || !Array.isArray(parsed.pages)) return;
@@ -191,9 +197,11 @@ var SQLiteService = class {
       console.error("[SQLiteService] Failed to parse workspace JSON for relational sync:", e);
       return;
     }
+
     try {
       this.db.exec("BEGIN IMMEDIATE;");
       this.db.exec("DELETE FROM pages; DELETE FROM blocks;");
+
       const insertPageStmt = this.db.prepare(`
         INSERT INTO pages (
           id, title, parent_id, children, created_at, updated_at,
@@ -201,10 +209,12 @@ var SQLiteService = class {
           deleted_at, icon, cover_image
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
       `);
+
       const insertBlockStmt = this.db.prepare(`
         INSERT INTO blocks (id, page_id, type, data, created_at)
         VALUES (?, ?, ?, ?, ?);
       `);
+
       for (const page of parsed.pages) {
         insertPageStmt.run(
           page.id,
@@ -221,6 +231,7 @@ var SQLiteService = class {
           typeof page.icon === "string" ? page.icon : null,
           typeof page.coverImage === "string" ? page.coverImage : null
         );
+
         if (Array.isArray(page.blocks)) {
           for (const block of page.blocks) {
             insertBlockStmt.run(
@@ -233,150 +244,15 @@ var SQLiteService = class {
           }
         }
       }
+
       this.db.exec("COMMIT;");
     } catch (e) {
       console.error("[SQLiteService] Sync structured tables failed, rolling back transaction:", e);
       try {
         this.db.exec("ROLLBACK;");
-      } catch {
-      }
+      } catch {}
     }
   }
-};
-var sqliteService = new SQLiteService();
+}
 
-// electron/main.ts
-var __filename = fileURLToPath(import.meta.url);
-var __dirname = path2.dirname(__filename);
-var mainWindow = null;
-var isDev = process.env.NODE_ENV === "development" || !app2.isPackaged;
-async function createWindow() {
-  mainWindow = new BrowserWindow({
-    width: 1200,
-    height: 800,
-    minWidth: 800,
-    minHeight: 600,
-    title: "Workspace Desktop",
-    webPreferences: {
-      preload: path2.join(__dirname, "preload.cjs"),
-      contextIsolation: true,
-      nodeIntegration: false,
-      sandbox: true
-    }
-  });
-  if (isDev) {
-    const devUrl = process.env.VITE_DEV_SERVER_URL || "http://localhost:3000";
-    await mainWindow.loadURL(devUrl);
-  } else {
-    const indexPath = path2.join(__dirname, "../dist/index.html");
-    await mainWindow.loadFile(indexPath);
-  }
-  mainWindow.on("closed", () => {
-    mainWindow = null;
-  });
-}
-function setupIpcHandlers() {
-  ipcMain.handle("clipboard:writeText", async (_event, text) => {
-    try {
-      clipboard.writeText(text);
-      return true;
-    } catch {
-      return false;
-    }
-  });
-  ipcMain.handle("clipboard:readText", async () => {
-    try {
-      return clipboard.readText();
-    } catch {
-      return "";
-    }
-  });
-  ipcMain.handle("dialog:alert", async (_event, message) => {
-    if (!mainWindow) return;
-    await dialog.showMessageBox(mainWindow, {
-      type: "info",
-      message,
-      buttons: ["OK"]
-    });
-  });
-  ipcMain.handle("dialog:confirm", async (_event, message) => {
-    if (!mainWindow) return false;
-    const result = await dialog.showMessageBox(mainWindow, {
-      type: "question",
-      message,
-      buttons: ["Cancel", "OK"],
-      defaultId: 1,
-      cancelId: 0
-    });
-    return result.response === 1;
-  });
-  ipcMain.handle(
-    "file:exportFile",
-    async (_event, { filename, content }) => {
-      if (!mainWindow) return false;
-      const saveResult = await dialog.showSaveDialog(mainWindow, {
-        defaultPath: filename
-      });
-      if (saveResult.canceled || !saveResult.filePath) {
-        return false;
-      }
-      await fs2.writeFile(saveResult.filePath, content, "utf-8");
-      return true;
-    }
-  );
-  ipcMain.handle("file:importFile", async (_event, _acceptFilter) => {
-    if (!mainWindow) return null;
-    const openResult = await dialog.showOpenDialog(mainWindow, {
-      properties: ["openFile"]
-    });
-    if (openResult.canceled || openResult.filePaths.length === 0) {
-      return null;
-    }
-    const filePath = openResult.filePaths[0];
-    const fileName = path2.basename(filePath);
-    const content = await fs2.readFile(filePath, "utf-8");
-    return { filename: fileName, content };
-  });
-  ipcMain.handle("app:getVersion", async () => {
-    return app2.getVersion();
-  });
-  ipcMain.on("db:getItemSync", (event, key) => {
-    event.returnValue = sqliteService.getItem(key);
-  });
-  ipcMain.on("db:isMigratedSync", (event) => {
-    event.returnValue = sqliteService.isMigrated();
-  });
-  ipcMain.handle("db:setItem", async (_event, key, value) => {
-    sqliteService.setItem(key, value);
-    return true;
-  });
-  ipcMain.handle("db:removeItem", async (_event, key) => {
-    sqliteService.removeItem(key);
-    return true;
-  });
-  ipcMain.handle("db:clear", async () => {
-    sqliteService.clear();
-    return true;
-  });
-  ipcMain.handle(
-    "db:migrateLocalStorage",
-    async (_event, data) => {
-      return sqliteService.migrateLocalStorage(data);
-    }
-  );
-}
-app2.whenReady().then(async () => {
-  await sqliteService.init();
-  setupIpcHandlers();
-  createWindow();
-  app2.on("activate", () => {
-    if (BrowserWindow.getAllWindows().length === 0) {
-      createWindow();
-    }
-  });
-});
-app2.on("window-all-closed", () => {
-  if (process.platform !== "darwin") {
-    app2.quit();
-  }
-});
+export const sqliteService = new SQLiteService();

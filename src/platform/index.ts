@@ -8,3 +8,4 @@ export * from "./browser/BrowserSettingsProvider";
 export * from "./electron/ElectronClipboardProvider";
 export * from "./electron/ElectronFileSystemProvider";
 export * from "./electron/ElectronDialogProvider";
+export * from "./electron/SQLitePersistenceProvider";

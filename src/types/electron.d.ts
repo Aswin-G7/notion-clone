@@ -15,6 +15,14 @@ export interface IElectronAPI {
   app: {
     getVersion: () => Promise<string>;
   };
+  database: {
+    getItem: (key: string) => string | null;
+    setItem: (key: string, value: string) => Promise<boolean>;
+    removeItem: (key: string) => Promise<boolean>;
+    clear: () => Promise<boolean>;
+    migrateLocalStorage: (data: Record<string, string>) => Promise<boolean>;
+    isMigrated: () => boolean;
+  };
 }
 
 declare global {
