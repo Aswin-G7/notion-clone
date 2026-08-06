@@ -72,46 +72,46 @@ export const TemplateGalleryModal: React.FC<TemplateGalleryModalProps> = ({
   ];
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 bg-stone-900/40 backdrop-blur-sm animate-fade-in">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 bg-stone-900/40 dark:bg-stone-950/60 backdrop-blur-sm animate-fade-in">
       <div
-        className="relative w-full max-w-4xl max-h-[85vh] flex flex-col bg-white rounded-xl shadow-2xl border border-stone-200 overflow-hidden font-sans"
+        className="relative w-full max-w-4xl max-h-[85vh] flex flex-col bg-white dark:bg-[#1f1f1f] rounded-xl shadow-2xl border border-stone-200 dark:border-stone-800 overflow-hidden font-sans"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-stone-200 bg-stone-50/50">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-stone-200 dark:border-stone-800 bg-stone-50/50 dark:bg-[#191919]">
           <div className="flex items-center gap-2.5">
-            <div className="p-2 rounded-lg bg-stone-900 text-stone-100">
+            <div className="p-2 rounded-lg bg-stone-900 dark:bg-stone-100 text-stone-100 dark:text-stone-900">
               <Sparkles className="h-4 w-4" />
             </div>
             <div>
-              <h2 className="text-base font-semibold text-stone-900">
+              <h2 className="text-base font-semibold text-stone-900 dark:text-stone-100">
                 Template Gallery
               </h2>
-              <p className="text-xs text-stone-500">
+              <p className="text-xs text-stone-500 dark:text-stone-400">
                 Choose a pre-configured Notion structure to jumpstart your document.
               </p>
             </div>
           </div>
           <button
             onClick={onClose}
-            className="p-1.5 rounded-lg text-stone-400 hover:text-stone-700 hover:bg-stone-200/60 transition-colors"
+            className="p-1.5 rounded-lg text-stone-400 dark:text-stone-500 hover:text-stone-700 dark:hover:text-stone-200 hover:bg-stone-200/60 dark:hover:bg-stone-800 transition-colors cursor-pointer"
           >
             <X className="h-5 w-5" />
           </button>
         </div>
 
         {/* Filter bar */}
-        <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 px-6 py-3 border-b border-stone-200 bg-stone-50/30">
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 px-6 py-3 border-b border-stone-200 dark:border-stone-800 bg-stone-50/30 dark:bg-[#1c1c1c]">
           {/* Category Tabs */}
           <div className="flex items-center gap-1 overflow-x-auto no-scrollbar py-0.5">
             {categories.map((cat) => (
               <button
                 key={cat.name}
                 onClick={() => setSelectedCategory(cat.name)}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all whitespace-nowrap ${
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all whitespace-nowrap cursor-pointer ${
                   selectedCategory === cat.name
-                    ? "bg-stone-900 text-stone-100 shadow-sm"
-                    : "text-stone-600 hover:bg-stone-200/50 hover:text-stone-900"
+                    ? "bg-stone-900 dark:bg-stone-100 text-stone-100 dark:text-stone-900 shadow-sm"
+                    : "text-stone-600 dark:text-stone-400 hover:bg-stone-200/50 dark:hover:bg-stone-800 hover:text-stone-900 dark:hover:text-stone-100"
                 }`}
               >
                 {cat.icon}
@@ -122,13 +122,13 @@ export const TemplateGalleryModal: React.FC<TemplateGalleryModalProps> = ({
 
           {/* Search bar */}
           <div className="relative w-full sm:w-64">
-            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-stone-400" />
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-stone-400 dark:text-stone-500" />
             <input
               type="text"
               placeholder="Search templates..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-8 pr-3 py-1.5 bg-white border border-stone-200 focus:border-stone-400 focus:outline-none rounded-lg text-xs text-stone-800 placeholder-stone-400 shadow-sm transition-all"
+              className="w-full pl-8 pr-3 py-1.5 bg-white dark:bg-[#252525] border border-stone-200 dark:border-stone-700 focus:border-stone-400 dark:focus:border-stone-500 focus:outline-none rounded-lg text-xs text-stone-800 dark:text-stone-100 placeholder-stone-400 dark:placeholder-stone-500 shadow-sm transition-all"
             />
           </div>
         </div>
@@ -136,7 +136,7 @@ export const TemplateGalleryModal: React.FC<TemplateGalleryModalProps> = ({
         {/* Body Grid: Left list + Right preview */}
         <div className="flex-1 overflow-hidden grid grid-cols-1 md:grid-cols-12">
           {/* Template Cards List */}
-          <div className="md:col-span-5 overflow-y-auto p-4 space-y-2 border-r border-stone-200 bg-stone-50/20">
+          <div className="md:col-span-5 overflow-y-auto p-4 space-y-2 border-r border-stone-200 dark:border-stone-800 bg-stone-50/20 dark:bg-[#191919]">
             {filteredTemplates.length > 0 ? (
               filteredTemplates.map((template) => {
                 const isSelected = selectedTemplate.id === template.id;
@@ -146,24 +146,24 @@ export const TemplateGalleryModal: React.FC<TemplateGalleryModalProps> = ({
                     onClick={() => setSelectedTemplate(template)}
                     className={`group cursor-pointer p-3.5 rounded-xl border transition-all ${
                       isSelected
-                        ? "bg-white border-stone-900 shadow-sm ring-1 ring-stone-900"
-                        : "bg-white border-stone-200 hover:border-stone-300 hover:shadow-sm"
+                        ? "bg-white dark:bg-[#252525] border-stone-900 dark:border-stone-100 shadow-sm ring-1 ring-stone-900 dark:ring-stone-100"
+                        : "bg-white dark:bg-[#202020] border-stone-200 dark:border-stone-800 hover:border-stone-300 dark:hover:border-stone-700 hover:shadow-sm"
                     }`}
                   >
                     <div className="flex items-start gap-3">
-                      <span className="text-2xl shrink-0 p-1 bg-stone-100 rounded-lg">
+                      <span className="text-2xl shrink-0 p-1 bg-stone-100 dark:bg-stone-800 rounded-lg">
                         {template.icon}
                       </span>
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center justify-between gap-1 mb-0.5">
-                          <h3 className="text-xs font-semibold text-stone-900 truncate">
+                          <h3 className="text-xs font-semibold text-stone-900 dark:text-stone-100 truncate">
                             {template.name}
                           </h3>
-                          <span className="text-[10px] font-medium text-stone-500 bg-stone-100 border border-stone-200 px-1.5 py-0.5 rounded-md shrink-0">
+                          <span className="text-[10px] font-medium text-stone-500 dark:text-stone-400 bg-stone-100 dark:bg-stone-800 border border-stone-200 dark:border-stone-700 px-1.5 py-0.5 rounded-md shrink-0">
                             {template.category}
                           </span>
                         </div>
-                        <p className="text-[11px] text-stone-500 line-clamp-2 leading-relaxed">
+                        <p className="text-[11px] text-stone-500 dark:text-stone-400 line-clamp-2 leading-relaxed">
                           {template.description}
                         </p>
                       </div>
@@ -172,18 +172,18 @@ export const TemplateGalleryModal: React.FC<TemplateGalleryModalProps> = ({
                 );
               })
             ) : (
-              <div className="py-12 text-center text-xs text-stone-400">
+              <div className="py-12 text-center text-xs text-stone-400 dark:text-stone-500">
                 No templates found matching your criteria.
               </div>
             )}
           </div>
 
           {/* Detailed Template Preview */}
-          <div className="md:col-span-7 flex flex-col h-full bg-white overflow-hidden">
+          <div className="md:col-span-7 flex flex-col h-full bg-white dark:bg-[#1f1f1f] overflow-hidden">
             <div className="flex-1 overflow-y-auto p-6 space-y-4">
               {/* Cover Preview */}
               {selectedTemplate.coverImage && (
-                <div className="h-28 w-full rounded-xl overflow-hidden border border-stone-200">
+                <div className="h-28 w-full rounded-xl overflow-hidden border border-stone-200 dark:border-stone-800">
                   <img
                     src={selectedTemplate.coverImage}
                     alt={selectedTemplate.name}
@@ -196,31 +196,31 @@ export const TemplateGalleryModal: React.FC<TemplateGalleryModalProps> = ({
               <div className="flex items-center gap-3">
                 <span className="text-3xl">{selectedTemplate.icon}</span>
                 <div>
-                  <h3 className="text-lg font-bold text-stone-900">
+                  <h3 className="text-lg font-bold text-stone-900 dark:text-stone-100">
                     {selectedTemplate.defaultTitle}
                   </h3>
-                  <p className="text-xs text-stone-500">
+                  <p className="text-xs text-stone-500 dark:text-stone-400">
                     {selectedTemplate.description}
                   </p>
                 </div>
               </div>
 
               {/* Block List Structure Preview */}
-              <div className="space-y-2 pt-2 border-t border-stone-100">
-                <span className="text-[11px] font-bold uppercase tracking-wider text-stone-400">
+              <div className="space-y-2 pt-2 border-t border-stone-100 dark:border-stone-800">
+                <span className="text-[11px] font-bold uppercase tracking-wider text-stone-400 dark:text-stone-500">
                   Included Blocks ({selectedTemplate.blocks.length})
                 </span>
                 <div className="space-y-1.5 max-h-56 overflow-y-auto pr-1">
                   {selectedTemplate.blocks.map((block, idx) => (
                     <div
                       key={idx}
-                      className="p-2.5 rounded-lg bg-stone-50 border border-stone-100 text-xs text-stone-700 flex items-center gap-2"
+                      className="p-2.5 rounded-lg bg-stone-50 dark:bg-[#252525] border border-stone-100 dark:border-stone-800 text-xs text-stone-700 dark:text-stone-300 flex items-center gap-2"
                     >
-                      <span className="text-[10px] uppercase font-mono font-semibold text-stone-400 bg-stone-200/60 px-1.5 py-0.5 rounded">
+                      <span className="text-[10px] uppercase font-mono font-semibold text-stone-400 dark:text-stone-500 bg-stone-200/60 dark:bg-stone-800 px-1.5 py-0.5 rounded">
                         {block.type}
                       </span>
                       <span
-                        className="truncate flex-1 text-stone-600"
+                        className="truncate flex-1 text-stone-600 dark:text-stone-300"
                         dangerouslySetInnerHTML={{
                           __html:
                             block.data.text ||
@@ -240,13 +240,13 @@ export const TemplateGalleryModal: React.FC<TemplateGalleryModalProps> = ({
             </div>
 
             {/* Action Footer */}
-            <div className="p-4 border-t border-stone-200 bg-stone-50/50 flex items-center justify-between">
-              <span className="text-xs text-stone-500">
+            <div className="p-4 border-t border-stone-200 dark:border-stone-800 bg-stone-50/50 dark:bg-[#191919] flex items-center justify-between">
+              <span className="text-xs text-stone-500 dark:text-stone-400">
                 Independent page instance • Fresh copy
               </span>
               <button
                 onClick={() => handleUseTemplate(selectedTemplate.id)}
-                className="flex items-center gap-2 px-4 py-2 bg-stone-900 hover:bg-stone-800 text-white text-xs font-semibold rounded-lg shadow-sm transition-all"
+                className="flex items-center gap-2 px-4 py-2 bg-stone-900 dark:bg-stone-100 hover:bg-stone-800 dark:hover:bg-stone-200 text-white dark:text-stone-900 text-xs font-semibold rounded-lg shadow-sm transition-all cursor-pointer"
               >
                 <span>Use Template</span>
                 <ArrowRight className="h-3.5 w-3.5" />

@@ -19,15 +19,15 @@ export const BulletListBlock: React.FC<BulletListBlockProps> = ({
 }) => {
   return (
     <div className="flex items-start gap-2.5 w-full py-0.5">
-      <span className="text-stone-400 select-none text-[15px] leading-relaxed pt-0.5 font-bold">•</span>
+      <span className="text-stone-400 dark:text-stone-500 select-none text-[15px] leading-relaxed pt-0.5 font-bold">•</span>
       <RichTextEditor
         id={`block-input-${block.id}`}
         value={block.data.text || ""}
         onChange={(val) => handleBlockChange(block.id, val)}
         onKeyDown={(e) => handleKeyDown(e, block)}
         placeholder="List item"
-        className="font-sans text-stone-800 text-[14.5px] leading-relaxed py-0.5"
-        placeholderClassName="text-stone-300 font-sans text-[14.5px] leading-relaxed py-0.5"
+        className="font-sans text-stone-800 dark:text-[#d3d3d3] text-[14.5px] leading-relaxed py-0.5"
+        placeholderClassName="text-stone-300 dark:text-stone-600 font-sans text-[14.5px] leading-relaxed py-0.5"
         onFocus={() => setSelectedBlockId(null)}
         isSelected={isSelected}
       />

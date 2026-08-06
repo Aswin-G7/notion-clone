@@ -24,8 +24,8 @@ export const HeadingBlock: React.FC<HeadingBlockProps> = ({
       onChange={(val) => handleBlockChange(block.id, val)}
       onKeyDown={(e) => handleKeyDown(e, block)}
       placeholder={`Heading ${block.data.level || 1}`}
-      className="font-display font-bold tracking-tight text-stone-900 py-1"
-      placeholderClassName="text-stone-300 font-display font-bold tracking-tight py-1"
+      className="font-display font-bold tracking-tight text-stone-900 dark:text-stone-100 py-1"
+      placeholderClassName="text-stone-300 dark:text-stone-600 font-display font-bold tracking-tight py-1"
       style={{
         fontSize: block.data.level === 1 ? "1.65rem" : block.data.level === 3 ? "1.15rem" : "1.35rem",
       }}

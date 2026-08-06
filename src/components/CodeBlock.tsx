@@ -17,6 +17,7 @@ import "prismjs/components/prism-json";
 import "prismjs/components/prism-markdown";
 
 import { Block } from "../types";
+import { useSettings } from "../hooks/useSettings";
 
 export const CODE_LANGUAGES = [
   { id: "plaintext", label: "Plain Text" },
@@ -106,6 +107,10 @@ export const CodeBlock: React.FC<CodeBlockProps> = ({
 }) => {
   const [copied, setCopied] = useState(false);
   const [langMenuOpen, setLangMenuOpen] = useState(false);
+  const { settings } = useSettings();
+  const tabWidth = settings.editor.tabWidth || 2;
+  const tabIndent = " ".repeat(tabWidth);
+
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const langMenuRef = useRef<HTMLDivElement>(null);
 
@@ -177,12 +182,12 @@ export const CodeBlock: React.FC<CodeBlockProps> = ({
 
       if (start === end) {
         // Single cursor position
-        const newValue = value.substring(0, start) + "  " + value.substring(end);
+        const newValue = value.substring(0, start) + tabIndent + value.substring(end);
         updateBlockData(activePageId, block.id, { text: newValue });
 
         setTimeout(() => {
           if (textareaRef.current) {
-            textareaRef.current.selectionStart = textareaRef.current.selectionEnd = start + 2;
+            textareaRef.current.selectionStart = textareaRef.current.selectionEnd = start + tabWidth;
           }
         }, 0);
       } else {
@@ -194,7 +199,7 @@ export const CodeBlock: React.FC<CodeBlockProps> = ({
         const selectedText = value.substring(lineStart, effectiveEnd);
         const indentedText = selectedText
           .split("\n")
-          .map((line) => "  " + line)
+          .map((line) => tabIndent + line)
           .join("\n");
 
         const newValue = value.substring(0, lineStart) + indentedText + value.substring(effectiveEnd);
@@ -203,7 +208,7 @@ export const CodeBlock: React.FC<CodeBlockProps> = ({
         const addedChars = indentedText.length - selectedText.length;
         setTimeout(() => {
           if (textareaRef.current) {
-            textareaRef.current.selectionStart = start + 2;
+            textareaRef.current.selectionStart = start + tabWidth;
             textareaRef.current.selectionEnd = end + addedChars;
           }
         }, 0);
@@ -211,7 +216,7 @@ export const CodeBlock: React.FC<CodeBlockProps> = ({
       return;
     }
 
-    // Shift+Tab key: Remove up to 2 spaces of indentation
+    // Shift+Tab key: Remove up to tabWidth spaces of indentation
     if (e.key === "Tab" && e.shiftKey) {
       e.preventDefault();
       e.stopPropagation();
@@ -228,7 +233,10 @@ export const CodeBlock: React.FC<CodeBlockProps> = ({
         .map((line, idx) => {
           let removed = 0;
           let newLine = line;
-          if (newLine.startsWith("  ")) {
+          if (newLine.startsWith(tabIndent)) {
+            newLine = newLine.substring(tabWidth);
+            removed = tabWidth;
+          } else if (newLine.startsWith("  ")) {
             newLine = newLine.substring(2);
             removed = 2;
           } else if (newLine.startsWith(" ")) {

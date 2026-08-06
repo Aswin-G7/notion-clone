@@ -1,5 +1,5 @@
 // electron/main.ts
-import { app as app3, BrowserWindow as BrowserWindow2, ipcMain, dialog as dialog2, clipboard, protocol, net } from "electron";
+import { app as app4, BrowserWindow as BrowserWindow3, ipcMain as ipcMain2, dialog as dialog3, clipboard, protocol, net } from "electron";
 import path3 from "path";
 import fs3 from "fs/promises";
 import existsSync from "fs";
@@ -657,6 +657,272 @@ var WorkspaceManager = class {
 };
 var workspaceManager = new WorkspaceManager();
 
+// electron/menuManager.ts
+import { app as app3, Menu, dialog as dialog2, shell, ipcMain } from "electron";
+var currentMenuState = {
+  hasActivePage: false,
+  selectedBlockId: null,
+  sidebarOpen: true,
+  isFullWidth: false,
+  favoritePages: [],
+  recentPages: []
+};
+var getMainWindowRef = () => null;
+function sendMenuAction(action, payload) {
+  const win = getMainWindowRef();
+  if (win && !win.isDestroyed()) {
+    win.webContents.send("menu:action", action, payload);
+  }
+}
+function setupApplicationMenu(getMainWindow) {
+  getMainWindowRef = getMainWindow;
+  ipcMain.on("menu:updateState", (_event, state) => {
+    currentMenuState = {
+      ...currentMenuState,
+      ...state
+    };
+    buildAndSetMenu();
+  });
+  buildAndSetMenu();
+}
+function buildAndSetMenu() {
+  const isMac = process.platform === "darwin";
+  const {
+    hasActivePage,
+    selectedBlockId,
+    sidebarOpen,
+    isFullWidth,
+    favoritePages,
+    recentPages
+  } = currentMenuState;
+  const template = [
+    ...isMac ? [
+      {
+        label: app3.name,
+        submenu: [
+          {
+            label: `About ${app3.name}`,
+            click: () => sendMenuAction("help:about")
+          },
+          { type: "separator" },
+          {
+            label: "Settings...",
+            accelerator: "CmdOrCtrl+,",
+            click: () => sendMenuAction("file:settings")
+          },
+          { type: "separator" },
+          { role: "services" },
+          { type: "separator" },
+          { role: "hide" },
+          { role: "hideOthers" },
+          { role: "unhide" },
+          { type: "separator" },
+          { role: "quit" }
+        ]
+      }
+    ] : [],
+    // 1. File Menu
+    {
+      label: "File",
+      submenu: [
+        {
+          label: "New Page",
+          accelerator: "CmdOrCtrl+N",
+          click: () => sendMenuAction("file:new-page")
+        },
+        { type: "separator" },
+        {
+          label: "New Workspace...",
+          accelerator: "CmdOrCtrl+Shift+N",
+          click: () => sendMenuAction("file:new-workspace")
+        },
+        {
+          label: "Open Workspace...",
+          accelerator: "CmdOrCtrl+O",
+          click: () => sendMenuAction("file:open-workspace")
+        },
+        {
+          label: "Close Workspace",
+          accelerator: "CmdOrCtrl+Shift+W",
+          click: () => sendMenuAction("file:close-workspace")
+        },
+        { type: "separator" },
+        {
+          label: "Export Current Page...",
+          accelerator: "CmdOrCtrl+E",
+          enabled: hasActivePage,
+          click: () => sendMenuAction("file:export-page")
+        },
+        {
+          label: "Export Workspace...",
+          accelerator: "CmdOrCtrl+Shift+E",
+          click: () => sendMenuAction("file:export-workspace")
+        },
+        {
+          label: "Import Workspace...",
+          accelerator: "CmdOrCtrl+Shift+I",
+          click: () => sendMenuAction("file:import-workspace")
+        },
+        { type: "separator" },
+        {
+          label: "Settings",
+          accelerator: "CmdOrCtrl+,",
+          click: () => sendMenuAction("file:settings")
+        },
+        { type: "separator" },
+        isMac ? { role: "close" } : { label: "Exit", accelerator: "Alt+F4", click: () => app3.quit() }
+      ]
+    },
+    // 2. Edit Menu
+    {
+      label: "Edit",
+      submenu: [
+        {
+          label: "Undo",
+          accelerator: "CmdOrCtrl+Z",
+          click: (_item, focusedWindow) => {
+            if (focusedWindow) sendMenuAction("edit:undo");
+          }
+        },
+        {
+          label: "Redo",
+          accelerator: isMac ? "CmdOrCtrl+Shift+Z" : "CmdOrCtrl+Y",
+          click: (_item, focusedWindow) => {
+            if (focusedWindow) sendMenuAction("edit:redo");
+          }
+        },
+        { type: "separator" },
+        {
+          label: "Cut",
+          accelerator: "CmdOrCtrl+X",
+          role: "cut"
+        },
+        {
+          label: "Copy",
+          accelerator: "CmdOrCtrl+C",
+          role: "copy"
+        },
+        {
+          label: "Paste",
+          accelerator: "CmdOrCtrl+V",
+          role: "paste"
+        },
+        { type: "separator" },
+        {
+          label: "Duplicate Block",
+          accelerator: "CmdOrCtrl+D",
+          enabled: Boolean(hasActivePage && selectedBlockId),
+          click: () => sendMenuAction("edit:duplicate-block")
+        },
+        {
+          label: "Delete Block",
+          accelerator: "Delete",
+          enabled: Boolean(hasActivePage && selectedBlockId),
+          click: () => sendMenuAction("edit:delete-block")
+        },
+        { type: "separator" },
+        {
+          label: "Select All",
+          accelerator: "CmdOrCtrl+A",
+          role: "selectAll"
+        }
+      ]
+    },
+    // 3. View Menu
+    {
+      label: "View",
+      submenu: [
+        {
+          label: "Toggle Sidebar",
+          accelerator: "CmdOrCtrl+\\",
+          type: "checkbox",
+          checked: sidebarOpen,
+          click: () => sendMenuAction("view:toggle-sidebar")
+        },
+        {
+          label: "Toggle Full Width",
+          accelerator: "CmdOrCtrl+Shift+F",
+          type: "checkbox",
+          checked: isFullWidth,
+          click: () => sendMenuAction("view:toggle-full-width")
+        },
+        { type: "separator" },
+        { role: "zoomIn", accelerator: "CmdOrCtrl+=" },
+        { role: "zoomOut", accelerator: "CmdOrCtrl+-" },
+        { role: "resetZoom", accelerator: "CmdOrCtrl+0" },
+        { type: "separator" },
+        { role: "togglefullscreen" }
+      ]
+    },
+    // 4. Go Menu
+    {
+      label: "Go",
+      submenu: [
+        {
+          label: "Search Pages...",
+          accelerator: "CmdOrCtrl+P",
+          click: () => sendMenuAction("go:search")
+        },
+        { type: "separator" },
+        {
+          label: "Favorites",
+          submenu: favoritePages.length > 0 ? favoritePages.map((page) => ({
+            label: `${page.icon || "\u{1F4C4}"} ${page.title || "Untitled"}`,
+            click: () => sendMenuAction("go:navigate-page", { pageId: page.id })
+          })) : [{ label: "No Favorite Pages", enabled: false }]
+        },
+        {
+          label: "Recent Pages",
+          submenu: recentPages.length > 0 ? recentPages.map((page) => ({
+            label: `${page.icon || "\u{1F4C4}"} ${page.title || "Untitled"}`,
+            click: () => sendMenuAction("go:navigate-page", { pageId: page.id })
+          })) : [{ label: "No Recent Pages", enabled: false }]
+        }
+      ]
+    },
+    // 5. Help Menu
+    {
+      label: "Help",
+      submenu: [
+        {
+          label: "About Workspace Desktop",
+          click: () => sendMenuAction("help:about")
+        },
+        {
+          label: "Version Info",
+          click: async () => {
+            const win = getMainWindowRef();
+            const version = app3.getVersion();
+            if (win) {
+              await dialog2.showMessageBox(win, {
+                type: "info",
+                title: "Application Version",
+                message: `Workspace Desktop v${version}`,
+                detail: `Electron: ${process.versions.electron}
+Chrome: ${process.versions.chrome}
+Node.js: ${process.versions.node}
+Platform: ${process.platform}`,
+                buttons: ["OK"]
+              });
+            }
+          }
+        },
+        { type: "separator" },
+        {
+          label: "Open Data Folder",
+          click: async () => {
+            const activePath = workspaceManager.getActiveWorkspacePath();
+            const targetPath = activePath || app3.getPath("userData");
+            await shell.openPath(targetPath);
+          }
+        }
+      ]
+    }
+  ];
+  const menu = Menu.buildFromTemplate(template);
+  Menu.setApplicationMenu(menu);
+}
+
 // electron/main.ts
 var __filename = fileURLToPath(import.meta.url);
 var __dirname = path3.dirname(__filename);
@@ -673,9 +939,9 @@ protocol.registerSchemesAsPrivileged([
   }
 ]);
 var mainWindow = null;
-var isDev = process.env.NODE_ENV === "development" || !app3.isPackaged;
+var isDev = process.env.NODE_ENV === "development" || !app4.isPackaged;
 async function createWindow() {
-  mainWindow = new BrowserWindow2({
+  mainWindow = new BrowserWindow3({
     width: 1200,
     height: 800,
     minWidth: 800,
@@ -700,7 +966,7 @@ async function createWindow() {
   });
 }
 function setupIpcHandlers() {
-  ipcMain.handle("clipboard:writeText", async (_event, text) => {
+  ipcMain2.handle("clipboard:writeText", async (_event, text) => {
     try {
       clipboard.writeText(text);
       return true;
@@ -708,24 +974,24 @@ function setupIpcHandlers() {
       return false;
     }
   });
-  ipcMain.handle("clipboard:readText", async () => {
+  ipcMain2.handle("clipboard:readText", async () => {
     try {
       return clipboard.readText();
     } catch {
       return "";
     }
   });
-  ipcMain.handle("dialog:alert", async (_event, message) => {
+  ipcMain2.handle("dialog:alert", async (_event, message) => {
     if (!mainWindow) return;
-    await dialog2.showMessageBox(mainWindow, {
+    await dialog3.showMessageBox(mainWindow, {
       type: "info",
       message,
       buttons: ["OK"]
     });
   });
-  ipcMain.handle("dialog:confirm", async (_event, message) => {
+  ipcMain2.handle("dialog:confirm", async (_event, message) => {
     if (!mainWindow) return false;
-    const result = await dialog2.showMessageBox(mainWindow, {
+    const result = await dialog3.showMessageBox(mainWindow, {
       type: "question",
       message,
       buttons: ["Cancel", "OK"],
@@ -734,67 +1000,146 @@ function setupIpcHandlers() {
     });
     return result.response === 1;
   });
-  ipcMain.handle(
+  ipcMain2.handle(
     "file:exportFile",
     async (_event, { filename, content }) => {
       if (!mainWindow) return false;
-      const saveResult = await dialog2.showSaveDialog(mainWindow, {
-        defaultPath: filename
+      const rawExt = filename.split(".").pop()?.toLowerCase() || "";
+      let filters = void 0;
+      let defaultExtension = void 0;
+      if (rawExt === "md" || rawExt === "markdown") {
+        defaultExtension = "md";
+        filters = [
+          { name: "Markdown Files (*.md, *.markdown)", extensions: ["md", "markdown"] },
+          { name: "All Files (*.*)", extensions: ["*"] }
+        ];
+      } else if (rawExt === "html" || rawExt === "htm") {
+        defaultExtension = "html";
+        filters = [
+          { name: "HTML Documents (*.html)", extensions: ["html", "htm"] },
+          { name: "All Files (*.*)", extensions: ["*"] }
+        ];
+      } else if (rawExt === "pdf") {
+        defaultExtension = "pdf";
+        filters = [
+          { name: "PDF Documents (*.pdf)", extensions: ["pdf"] },
+          { name: "All Files (*.*)", extensions: ["*"] }
+        ];
+      } else if (rawExt === "zip") {
+        defaultExtension = "zip";
+        filters = [
+          { name: "Zip Archives (*.zip)", extensions: ["zip"] },
+          { name: "All Files (*.*)", extensions: ["*"] }
+        ];
+      } else if (rawExt === "json") {
+        defaultExtension = "json";
+        filters = [
+          { name: "JSON Files (*.json)", extensions: ["json"] },
+          { name: "All Files (*.*)", extensions: ["*"] }
+        ];
+      }
+      const saveResult = await dialog3.showSaveDialog(mainWindow, {
+        title: "Save File",
+        defaultPath: filename,
+        filters
       });
       if (saveResult.canceled || !saveResult.filePath) {
         return false;
       }
-      await fs3.writeFile(saveResult.filePath, content, "utf-8");
+      let filePath = saveResult.filePath;
+      if (defaultExtension && !path3.extname(filePath)) {
+        filePath = `${filePath}.${defaultExtension}`;
+      }
+      if (typeof content === "string") {
+        await fs3.writeFile(filePath, content, "utf-8");
+      } else {
+        await fs3.writeFile(filePath, Buffer.from(content));
+      }
       return true;
     }
   );
-  ipcMain.handle("file:importFile", async (_event, _acceptFilter) => {
+  ipcMain2.handle("file:importFile", async (_event, acceptFilter) => {
     if (!mainWindow) return null;
-    const openResult = await dialog2.showOpenDialog(mainWindow, {
-      properties: ["openFile"]
+    let filters = void 0;
+    if (acceptFilter) {
+      const rawExts = acceptFilter.split(",").map((ext) => ext.trim().replace(/^\./, "").toLowerCase()).filter(Boolean);
+      if (rawExts.length > 0) {
+        const isMarkdown = rawExts.some((e) => e === "md" || e === "markdown");
+        const isWorkspace = rawExts.some((e) => e === "zip" || e === "json");
+        filters = [];
+        if (isMarkdown && !isWorkspace) {
+          filters.push({
+            name: "Markdown Documents",
+            extensions: rawExts
+          });
+        } else if (isWorkspace && !isMarkdown) {
+          filters.push({
+            name: "Workspace Archives & Backups",
+            extensions: rawExts
+          });
+        } else {
+          filters.push({
+            name: "Supported Documents",
+            extensions: rawExts
+          });
+        }
+        filters.push({
+          name: "All Files",
+          extensions: ["*"]
+        });
+      }
+    }
+    const openResult = await dialog3.showOpenDialog(mainWindow, {
+      title: "Import File",
+      properties: ["openFile"],
+      filters
     });
     if (openResult.canceled || openResult.filePaths.length === 0) {
       return null;
     }
     const filePath = openResult.filePaths[0];
     const fileName = path3.basename(filePath);
-    const content = await fs3.readFile(filePath, "utf-8");
-    return { filename: fileName, content };
+    const buffer = await fs3.readFile(filePath);
+    if (fileName.toLowerCase().endsWith(".zip")) {
+      return { filename: fileName, content: buffer };
+    } else {
+      return { filename: fileName, content: buffer.toString("utf-8") };
+    }
   });
-  ipcMain.handle("app:getVersion", async () => {
-    return app3.getVersion();
+  ipcMain2.handle("app:getVersion", async () => {
+    return app4.getVersion();
   });
-  ipcMain.on("db:getItemSync", (event, key) => {
+  ipcMain2.on("db:getItemSync", (event, key) => {
     event.returnValue = sqliteService.getItem(key);
   });
-  ipcMain.on("db:isMigratedSync", (event) => {
+  ipcMain2.on("db:isMigratedSync", (event) => {
     event.returnValue = sqliteService.isMigrated();
   });
-  ipcMain.handle("db:setItem", async (_event, key, value) => {
+  ipcMain2.handle("db:setItem", async (_event, key, value) => {
     sqliteService.setItem(key, value);
     return true;
   });
-  ipcMain.handle("db:removeItem", async (_event, key) => {
+  ipcMain2.handle("db:removeItem", async (_event, key) => {
     sqliteService.removeItem(key);
     return true;
   });
-  ipcMain.handle("db:clear", async () => {
+  ipcMain2.handle("db:clear", async () => {
     sqliteService.clear();
     return true;
   });
-  ipcMain.handle(
+  ipcMain2.handle(
     "db:migrateLocalStorage",
     async (_event, data) => {
       return sqliteService.migrateLocalStorage(data);
     }
   );
-  ipcMain.handle("workspace:getActive", async () => {
+  ipcMain2.handle("workspace:getActive", async () => {
     return workspaceManager.getActiveWorkspaceInfo();
   });
-  ipcMain.handle("workspace:selectFolder", async () => {
+  ipcMain2.handle("workspace:selectFolder", async () => {
     return workspaceManager.selectWorkspaceFolder(mainWindow);
   });
-  ipcMain.handle("workspace:create", async (_event, folderPath, name) => {
+  ipcMain2.handle("workspace:create", async (_event, folderPath, name) => {
     let targetPath = folderPath;
     if (!targetPath) {
       targetPath = await workspaceManager.selectWorkspaceFolder(mainWindow) || void 0;
@@ -813,7 +1158,7 @@ function setupIpcHandlers() {
     }, 800);
     return info;
   });
-  ipcMain.handle("workspace:open", async (_event, folderPath) => {
+  ipcMain2.handle("workspace:open", async (_event, folderPath) => {
     let targetPath = folderPath;
     if (!targetPath) {
       targetPath = await workspaceManager.selectWorkspaceFolder(mainWindow) || void 0;
@@ -832,7 +1177,7 @@ function setupIpcHandlers() {
     }, 800);
     return info;
   });
-  ipcMain.handle("workspace:switch", async (_event, folderPath) => {
+  ipcMain2.handle("workspace:switch", async (_event, folderPath) => {
     sqliteService.setSaveLocked(true);
     workspaceManager.createBackup();
     const info = workspaceManager.openWorkspace(folderPath);
@@ -846,21 +1191,21 @@ function setupIpcHandlers() {
     }, 800);
     return info;
   });
-  ipcMain.handle("workspace:close", async () => {
+  ipcMain2.handle("workspace:close", async () => {
     workspaceManager.createBackup();
     workspaceManager.closeWorkspace();
     return true;
   });
-  ipcMain.handle("workspace:getRecents", async () => {
+  ipcMain2.handle("workspace:getRecents", async () => {
     return workspaceManager.getRecentWorkspaces();
   });
-  ipcMain.handle("workspace:removeRecent", async (_event, folderPath) => {
+  ipcMain2.handle("workspace:removeRecent", async (_event, folderPath) => {
     return workspaceManager.removeRecentWorkspace(folderPath);
   });
-  ipcMain.handle("workspace:delete", async (_event, folderPath) => {
+  ipcMain2.handle("workspace:delete", async (_event, folderPath) => {
     if (!folderPath) return false;
     if (mainWindow) {
-      const confirmResult = await dialog2.showMessageBox(mainWindow, {
+      const confirmResult = await dialog3.showMessageBox(mainWindow, {
         type: "warning",
         title: "Delete Workspace Permanently",
         message: "Are you sure you want to permanently delete this workspace?",
@@ -897,7 +1242,7 @@ ${folderPath}`,
       if (validNext) {
         nextWsPath = workspaceManager.openWorkspace(validNext.path).path;
       } else {
-        const userDataPath = app3.getPath("userData");
+        const userDataPath = app4.getPath("userData");
         nextWsPath = await workspaceManager.init() || path3.join(userDataPath, "workspaces", "Default Workspace");
       }
       const dbPath = path3.join(nextWsPath, "workspace.sqlite");
@@ -929,7 +1274,7 @@ function setupAssetProtocol() {
     }
   });
 }
-app3.whenReady().then(async () => {
+app4.whenReady().then(async () => {
   setupAssetProtocol();
   const activeWsPath = await workspaceManager.init();
   if (activeWsPath) {
@@ -939,16 +1284,17 @@ app3.whenReady().then(async () => {
     await sqliteService.init();
   }
   setupIpcHandlers();
+  setupApplicationMenu(() => mainWindow);
   createWindow();
-  app3.on("activate", () => {
-    if (BrowserWindow2.getAllWindows().length === 0) {
+  app4.on("activate", () => {
+    if (BrowserWindow3.getAllWindows().length === 0) {
       createWindow();
     }
   });
 });
-app3.on("window-all-closed", () => {
+app4.on("window-all-closed", () => {
   workspaceManager.createBackup();
   if (process.platform !== "darwin") {
-    app3.quit();
+    app4.quit();
   }
 });

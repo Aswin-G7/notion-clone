@@ -129,7 +129,7 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
         top: adjustedPosition.y,
         left: adjustedPosition.x,
       }}
-      className="z-50 min-w-[220px] bg-white border border-stone-200 shadow-xl rounded-lg py-1.5 text-stone-800 text-sm select-none animate-in fade-in zoom-in-95 duration-100"
+      className="z-50 min-w-[220px] bg-white dark:bg-[#202020] border border-stone-200 dark:border-stone-700 shadow-xl dark:shadow-2xl rounded-lg py-1.5 text-stone-800 dark:text-stone-100 text-sm select-none animate-in fade-in zoom-in-95 duration-100"
     >
       {/* Actions */}
       <button
@@ -140,11 +140,11 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
           onClose();
         }}
         onMouseEnter={handleMouseEnterOther}
-        className="w-full flex items-center gap-2.5 px-3 py-1.5 text-left hover:bg-stone-50 transition-colors"
+        className="w-full flex items-center gap-2.5 px-3 py-1.5 text-left hover:bg-stone-100 dark:hover:bg-[#2c2c2c] transition-colors cursor-pointer"
       >
-        <Copy className="h-4 w-4 text-stone-500" />
-        <span className="flex-1 font-medium text-stone-700">Duplicate</span>
-        <span className="text-[10px] text-stone-400">Ctrl+D</span>
+        <Copy className="h-4 w-4 text-stone-500 dark:text-stone-400" />
+        <span className="flex-1 font-medium text-stone-700 dark:text-stone-200">Duplicate</span>
+        <span className="text-[10px] text-stone-400 dark:text-stone-500">Ctrl+D</span>
       </button>
 
       {/* Turn Into Submenu Trigger */}
@@ -156,18 +156,18 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
       >
         <button
           id="context-menu-turn-into-btn"
-          className="w-full flex items-center gap-2.5 px-3 py-1.5 text-left hover:bg-stone-50 transition-colors"
+          className="w-full flex items-center gap-2.5 px-3 py-1.5 text-left hover:bg-stone-100 dark:hover:bg-[#2c2c2c] transition-colors cursor-pointer"
         >
-          <Type className="h-4 w-4 text-stone-500" />
-          <span className="flex-1 font-medium text-stone-700">Turn Into</span>
-          <ChevronRight className="h-3.5 w-3.5 text-stone-400" />
+          <Type className="h-4 w-4 text-stone-500 dark:text-stone-400" />
+          <span className="flex-1 font-medium text-stone-700 dark:text-stone-200">Turn Into</span>
+          <ChevronRight className="h-3.5 w-3.5 text-stone-400 dark:text-stone-500" />
         </button>
 
         {/* Turn Into Submenu */}
         {showSubmenu && (
           <div
             id="context-menu-turn-into-submenu"
-            className="absolute left-full top-0 ml-1 min-w-[180px] bg-white border border-stone-200 shadow-xl rounded-lg py-1 text-stone-800 text-sm animate-in fade-in slide-in-from-left-2 duration-100"
+            className="absolute left-full top-0 ml-1 min-w-[180px] bg-white dark:bg-[#202020] border border-stone-200 dark:border-stone-700 shadow-xl dark:shadow-2xl rounded-lg py-1 text-stone-800 dark:text-stone-100 text-sm animate-in fade-in slide-in-from-left-2 duration-100"
           >
             {TURN_INTO_OPTIONS.map((option) => {
               const IconComponent = option.icon;
@@ -204,10 +204,10 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
                     onTurnInto(blockType, option.extraData);
                     onClose();
                   }}
-                  className="w-full flex items-center gap-2.5 px-3 py-1.5 text-left hover:bg-stone-50 transition-colors"
+                  className="w-full flex items-center gap-2.5 px-3 py-1.5 text-left hover:bg-stone-100 dark:hover:bg-[#2c2c2c] transition-colors cursor-pointer"
                 >
-                  <IconComponent className="h-4 w-4 text-stone-500" />
-                  <span className="flex-1 font-medium text-stone-700">{option.label}</span>
+                  <IconComponent className="h-4 w-4 text-stone-500 dark:text-stone-400" />
+                  <span className="flex-1 font-medium text-stone-700 dark:text-stone-200">{option.label}</span>
                 </button>
               );
             })}
@@ -215,7 +215,7 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
         )}
       </div>
 
-      <div className="my-1 border-t border-stone-100" />
+      <div className="my-1 border-t border-stone-100 dark:border-stone-800" />
 
       <button
         id="context-menu-delete"
@@ -230,11 +230,11 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
           onClose();
         }}
         onMouseEnter={handleMouseEnterOther}
-        className="w-full flex items-center gap-2.5 px-3 py-1.5 text-left hover:bg-red-50 text-red-600 transition-colors"
+        className="w-full flex items-center gap-2.5 px-3 py-1.5 text-left hover:bg-red-50 dark:hover:bg-red-950/40 text-red-600 dark:text-red-400 transition-colors cursor-pointer"
       >
-        <Trash2 className="h-4 w-4 text-red-500" />
-        <span className="flex-1 font-medium text-red-700">Delete</span>
-        <span className="text-[10px] text-red-400">Del</span>
+        <Trash2 className="h-4 w-4 text-red-500 dark:text-red-400" />
+        <span className="flex-1 font-medium text-red-700 dark:text-red-300">Delete</span>
+        <span className="text-[10px] text-red-400 dark:text-red-500">Del</span>
       </button>
     </div>
   );

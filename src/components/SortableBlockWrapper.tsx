@@ -79,11 +79,11 @@ export const SortableBlockWrapper: React.FC<SortableBlockWrapperProps> = ({
       onContextMenu={handleWrapperContextMenu}
       className={`group/block relative flex items-start gap-3 pr-2 ${paddingYClass} ${marginTopClass} rounded-lg transition-all ${
         isHighlighted
-          ? "bg-amber-100/90 ring-2 ring-amber-400 shadow-md pl-2 duration-300"
+          ? "bg-amber-100/90 dark:bg-amber-950/50 ring-2 ring-amber-400 dark:ring-amber-500 shadow-md pl-2 duration-300"
           : isSelected
-          ? "bg-blue-50/90 ring-1 ring-blue-300/60 shadow-[0_0_0_1px_rgba(59,130,246,0.12)] pl-2"
-          : "border-transparent hover:bg-stone-50/40 pl-2"
-      } ${isDragging ? "bg-stone-100/70 border-stone-300 shadow-sm" : ""}`}
+          ? "bg-blue-50/90 dark:bg-blue-950/40 ring-1 ring-blue-300/60 dark:ring-blue-700/60 pl-2"
+          : "border-transparent hover:bg-stone-50/40 dark:hover:bg-stone-800/30 pl-2"
+      } ${isDragging ? "bg-stone-100/70 dark:bg-stone-800/70 border-stone-300 dark:border-stone-700 shadow-sm" : ""}`}
     >
       {/* Left-aligned Hover Block Controls with drag listeners and attributes */}
       <BlockToolbar

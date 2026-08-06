@@ -5,6 +5,7 @@ import existsSync from "fs";
 import { fileURLToPath, pathToFileURL } from "url";
 import { sqliteService } from "./sqliteService.js";
 import { workspaceManager } from "./workspaceManager.js";
+import { setupApplicationMenu } from "./menuManager.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -97,31 +98,129 @@ function setupIpcHandlers() {
   // Files
   ipcMain.handle(
     "file:exportFile",
-    async (_event, { filename, content }: { filename: string; content: string }) => {
+    async (_event, { filename, content }: { filename: string; content: string | Uint8Array | Buffer }) => {
       if (!mainWindow) return false;
+
+      const rawExt = filename.split(".").pop()?.toLowerCase() || "";
+      let filters: Electron.FileFilter[] | undefined = undefined;
+      let defaultExtension: string | undefined = undefined;
+
+      if (rawExt === "md" || rawExt === "markdown") {
+        defaultExtension = "md";
+        filters = [
+          { name: "Markdown Files (*.md, *.markdown)", extensions: ["md", "markdown"] },
+          { name: "All Files (*.*)", extensions: ["*"] },
+        ];
+      } else if (rawExt === "html" || rawExt === "htm") {
+        defaultExtension = "html";
+        filters = [
+          { name: "HTML Documents (*.html)", extensions: ["html", "htm"] },
+          { name: "All Files (*.*)", extensions: ["*"] },
+        ];
+      } else if (rawExt === "pdf") {
+        defaultExtension = "pdf";
+        filters = [
+          { name: "PDF Documents (*.pdf)", extensions: ["pdf"] },
+          { name: "All Files (*.*)", extensions: ["*"] },
+        ];
+      } else if (rawExt === "zip") {
+        defaultExtension = "zip";
+        filters = [
+          { name: "Zip Archives (*.zip)", extensions: ["zip"] },
+          { name: "All Files (*.*)", extensions: ["*"] },
+        ];
+      } else if (rawExt === "json") {
+        defaultExtension = "json";
+        filters = [
+          { name: "JSON Files (*.json)", extensions: ["json"] },
+          { name: "All Files (*.*)", extensions: ["*"] },
+        ];
+      }
+
       const saveResult = await dialog.showSaveDialog(mainWindow, {
+        title: "Save File",
         defaultPath: filename,
+        filters,
       });
+
       if (saveResult.canceled || !saveResult.filePath) {
         return false;
       }
-      await fs.writeFile(saveResult.filePath, content, "utf-8");
+
+      let filePath = saveResult.filePath;
+      if (defaultExtension && !path.extname(filePath)) {
+        filePath = `${filePath}.${defaultExtension}`;
+      }
+
+      if (typeof content === "string") {
+        await fs.writeFile(filePath, content, "utf-8");
+      } else {
+        await fs.writeFile(filePath, Buffer.from(content));
+      }
       return true;
     }
   );
 
-  ipcMain.handle("file:importFile", async (_event, _acceptFilter?: string) => {
+  ipcMain.handle("file:importFile", async (_event, acceptFilter?: string) => {
     if (!mainWindow) return null;
+
+    let filters: Electron.FileFilter[] | undefined = undefined;
+
+    if (acceptFilter) {
+      const rawExts = acceptFilter
+        .split(",")
+        .map((ext) => ext.trim().replace(/^\./, "").toLowerCase())
+        .filter(Boolean);
+
+      if (rawExts.length > 0) {
+        const isMarkdown = rawExts.some((e) => e === "md" || e === "markdown");
+        const isWorkspace = rawExts.some((e) => e === "zip" || e === "json");
+
+        filters = [];
+
+        if (isMarkdown && !isWorkspace) {
+          filters.push({
+            name: "Markdown Documents",
+            extensions: rawExts,
+          });
+        } else if (isWorkspace && !isMarkdown) {
+          filters.push({
+            name: "Workspace Archives & Backups",
+            extensions: rawExts,
+          });
+        } else {
+          filters.push({
+            name: "Supported Documents",
+            extensions: rawExts,
+          });
+        }
+
+        filters.push({
+          name: "All Files",
+          extensions: ["*"],
+        });
+      }
+    }
+
     const openResult = await dialog.showOpenDialog(mainWindow, {
+      title: "Import File",
       properties: ["openFile"],
+      filters,
     });
+
     if (openResult.canceled || openResult.filePaths.length === 0) {
       return null;
     }
+
     const filePath = openResult.filePaths[0];
     const fileName = path.basename(filePath);
-    const content = await fs.readFile(filePath, "utf-8");
-    return { filename: fileName, content };
+    const buffer = await fs.readFile(filePath);
+
+    if (fileName.toLowerCase().endsWith(".zip")) {
+      return { filename: fileName, content: buffer };
+    } else {
+      return { filename: fileName, content: buffer.toString("utf-8") };
+    }
   });
 
   ipcMain.handle("app:getVersion", async () => {
@@ -350,6 +449,7 @@ app.whenReady().then(async () => {
   }
 
   setupIpcHandlers();
+  setupApplicationMenu(() => mainWindow);
   createWindow();
 
   app.on("activate", () => {

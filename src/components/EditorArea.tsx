@@ -36,6 +36,8 @@ import { BlockRenderer } from "./blocks/BlockRenderer";
 import { TemplateGalleryModal } from "./TemplateGalleryModal";
 import { PageHeader } from "./PageHeader";
 import { PREDEFINED_TEMPLATES } from "../templates/templateRegistry";
+import { useSettings } from "../hooks/useSettings";
+import { LineWidthOption } from "../types/settings";
 
 const getPlainTextFromHtml = (html: string): string => {
   if (!html) return "";
@@ -194,6 +196,20 @@ export const EditorArea: React.FC = () => {
     pendingSearchTarget,
     setPendingSearchTarget,
   } = useApp();
+
+  const { settings } = useSettings();
+
+  const getLineWidthClass = (lineWidth: LineWidthOption) => {
+    switch (lineWidth) {
+      case "wide":
+        return "max-w-5xl";
+      case "full":
+        return "max-w-full";
+      case "readable":
+      default:
+        return "max-w-3xl";
+    }
+  };
 
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [showCoverPicker, setShowCoverPicker] = useState(false);
@@ -704,23 +720,23 @@ export const EditorArea: React.FC = () => {
 
   if (!activePage) {
     return (
-      <div id="editor-empty-state" className="flex-1 flex flex-col items-center justify-center bg-stone-50/50 p-8 text-center select-none">
+      <div id="editor-empty-state" className="flex-1 flex flex-col items-center justify-center bg-stone-50/50 dark:bg-[#191919] p-8 text-center select-none">
         <div className="max-w-md space-y-6">
-          <div className="w-16 h-16 mx-auto bg-stone-100 rounded-2xl flex items-center justify-center border border-stone-200/60 text-stone-400">
-            <Sparkles className="h-8 w-8 text-stone-400 animate-pulse" />
+          <div className="w-16 h-16 mx-auto bg-stone-100 dark:bg-stone-800 rounded-2xl flex items-center justify-center border border-stone-200/60 dark:border-stone-700 text-stone-400">
+            <Sparkles className="h-8 w-8 text-stone-400 dark:text-stone-500 animate-pulse" />
           </div>
           <div className="space-y-2">
-            <h2 className="text-xl font-bold font-display text-stone-800">
+            <h2 className="text-xl font-bold font-display text-stone-800 dark:text-stone-100">
               No page selected
             </h2>
-            <p className="text-sm text-stone-500 font-sans leading-relaxed">
+            <p className="text-sm text-stone-500 dark:text-stone-400 font-sans leading-relaxed">
               Select an existing page from your personal workspace sidebar, or create a brand new one to start capturing your ideas.
             </p>
           </div>
           <button
             id="empty-create-page-btn"
             onClick={() => createPage(null)}
-            className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-stone-100 bg-stone-900 hover:bg-stone-800 rounded-lg shadow-sm transition-all cursor-pointer"
+            className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-stone-100 dark:text-stone-900 bg-stone-900 dark:bg-stone-100 hover:bg-stone-800 dark:hover:bg-stone-200 rounded-lg shadow-sm transition-all cursor-pointer"
           >
             <Plus className="h-4 w-4" />
             <span>Create new page</span>
@@ -1314,7 +1330,7 @@ export const EditorArea: React.FC = () => {
       onPaste={handleWorkspacePaste}
       onDrop={handleWorkspaceDrop}
       onDragOver={handleWorkspaceDragOver}
-      className="flex-1 flex flex-col bg-white overflow-y-auto relative"
+      className="flex-1 flex flex-col bg-white dark:bg-[#191919] text-stone-900 dark:text-[#d3d3d3] overflow-y-auto relative"
     >
       <PageHeader
         page={activePage}
@@ -1325,14 +1341,17 @@ export const EditorArea: React.FC = () => {
       />
 
       {/* Editor Content Container */}
-      <div className="flex-1 max-w-3xl w-full mx-auto px-6 sm:px-12 md:px-16 pt-2 pb-16 space-y-6 flex flex-col">
+      <div
+        className={`flex-1 ${getLineWidthClass(settings.editor.lineWidth)} w-full mx-auto px-6 sm:px-12 md:px-16 pt-2 pb-16 space-y-6 flex flex-col`}
+        style={{ fontSize: `${settings.editor.fontSize}px` }}
+      >
 
         {/* Notion-style Page Template Quick Launcher on Blank Pages */}
         {isEmptyPage && (
-          <div className="my-2 p-3.5 rounded-xl border border-stone-200 bg-stone-50/70 space-y-2.5 font-sans animate-fade-in shrink-0">
+          <div className="my-2 p-3.5 rounded-xl border border-stone-200 dark:border-stone-800 bg-stone-50/70 dark:bg-[#202020] space-y-2.5 font-sans animate-fade-in shrink-0">
             <div
               onClick={() => focusFirstEditableBlock(activePage)}
-              className="flex items-center gap-1.5 text-stone-500 text-xs font-medium cursor-pointer hover:text-stone-700 transition-colors"
+              className="flex items-center gap-1.5 text-stone-500 dark:text-stone-400 text-xs font-medium cursor-pointer hover:text-stone-700 dark:hover:text-stone-200 transition-colors"
             >
               <Sparkles className="h-3.5 w-3.5 text-amber-500 shrink-0" />
               <span>Press enter to continue writing, or start from a pre-configured template:</span>
@@ -1342,7 +1361,7 @@ export const EditorArea: React.FC = () => {
                 <button
                   key={tmpl.id}
                   onClick={() => applyTemplateToPage(activePage.id, tmpl.id)}
-                  className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white border border-stone-200 hover:border-stone-400 hover:shadow-sm text-xs font-medium text-stone-700 hover:text-stone-900 transition-all cursor-pointer"
+                  className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white dark:bg-[#252525] border border-stone-200 dark:border-stone-700 hover:border-stone-400 dark:hover:border-stone-500 hover:shadow-sm text-xs font-medium text-stone-700 dark:text-stone-200 hover:text-stone-900 dark:hover:text-white transition-all cursor-pointer"
                 >
                   <span className="text-sm">{tmpl.icon}</span>
                   <span>{tmpl.name}</span>
@@ -1465,15 +1484,15 @@ export const EditorArea: React.FC = () => {
           )}
 
           {/* Persistent Action Bar at the Bottom to insert new blocks easily */}
-          <div className="flex flex-col gap-2 pt-4 border-t border-stone-150/60 select-none">
+          <div className="flex flex-col gap-2 pt-4 border-t border-stone-150/60 dark:border-stone-800 select-none">
             <div className="flex items-center justify-between">
-              <span className="text-[11px] font-bold text-stone-400 uppercase tracking-wider font-sans">
+              <span className="text-[11px] font-bold text-stone-400 dark:text-stone-500 uppercase tracking-wider font-sans">
                 Insert New Block {selectedBlockId ? "(Inserts after highlighted block)" : ""}
               </span>
               {selectedBlockId && (
                 <button
                   onClick={() => setSelectedBlockId(null)}
-                  className="text-[10px] text-stone-400 hover:text-stone-600 underline font-semibold font-sans"
+                  className="text-[10px] text-stone-400 hover:text-stone-600 dark:hover:text-stone-300 underline font-semibold font-sans cursor-pointer"
                 >
                   Clear Selection (Append to end)
                 </button>
@@ -1486,9 +1505,9 @@ export const EditorArea: React.FC = () => {
                   const newBlockId = addBlock(activePage.id, "paragraph", "", selectedBlockId);
                   focusBlockInput(newBlockId);
                 }}
-                className="flex-1 min-w-[120px] flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg border border-stone-200/60 bg-stone-50 hover:bg-stone-100 text-xs font-semibold text-stone-600 hover:text-stone-900 cursor-pointer transition-all active:scale-95"
+                className="flex-1 min-w-[120px] flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg border border-stone-200/60 dark:border-stone-800 bg-stone-50 dark:bg-[#202020] hover:bg-stone-100 dark:hover:bg-stone-800 text-xs font-semibold text-stone-600 dark:text-stone-300 hover:text-stone-900 dark:hover:text-stone-100 cursor-pointer transition-all active:scale-95"
               >
-                <FileText className="h-3.5 w-3.5 text-stone-400" />
+                <FileText className="h-3.5 w-3.5 text-stone-400 dark:text-stone-500" />
                 <span>+ Paragraph</span>
               </button>
               <button
@@ -1497,9 +1516,9 @@ export const EditorArea: React.FC = () => {
                   const newBlockId = addBlock(activePage.id, "heading", "", selectedBlockId);
                   focusBlockInput(newBlockId);
                 }}
-                className="flex-1 min-w-[120px] flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg border border-stone-200/60 bg-stone-50 hover:bg-stone-100 text-xs font-semibold text-stone-600 hover:text-stone-900 cursor-pointer transition-all active:scale-95"
+                className="flex-1 min-w-[120px] flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg border border-stone-200/60 dark:border-stone-800 bg-stone-50 dark:bg-[#202020] hover:bg-stone-100 dark:hover:bg-stone-800 text-xs font-semibold text-stone-600 dark:text-stone-300 hover:text-stone-900 dark:hover:text-stone-100 cursor-pointer transition-all active:scale-95"
               >
-                <span className="text-xs font-bold text-stone-400 font-display">H</span>
+                <span className="text-xs font-bold text-stone-400 dark:text-stone-500 font-display">H</span>
                 <span>+ Heading</span>
               </button>
               <button
@@ -1508,9 +1527,9 @@ export const EditorArea: React.FC = () => {
                   const newBlockId = addBlock(activePage.id, "toggle", "", selectedBlockId, { collapsed: false });
                   focusBlockInput(newBlockId);
                 }}
-                className="flex-1 min-w-[120px] flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg border border-stone-200/60 bg-stone-50 hover:bg-stone-100 text-xs font-semibold text-stone-600 hover:text-stone-900 cursor-pointer transition-all active:scale-95"
+                className="flex-1 min-w-[120px] flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg border border-stone-200/60 dark:border-stone-800 bg-stone-50 dark:bg-[#202020] hover:bg-stone-100 dark:hover:bg-stone-800 text-xs font-semibold text-stone-600 dark:text-stone-300 hover:text-stone-900 dark:hover:text-stone-100 cursor-pointer transition-all active:scale-95"
               >
-                <ChevronRight className="h-3.5 w-3.5 text-stone-400" />
+                <ChevronRight className="h-3.5 w-3.5 text-stone-400 dark:text-stone-500" />
                 <span>+ Toggle</span>
               </button>
               <button
@@ -1519,9 +1538,9 @@ export const EditorArea: React.FC = () => {
                   const newBlockId = addBlock(activePage.id, "callout", "", selectedBlockId, { icon: "💡" });
                   focusBlockInput(newBlockId);
                 }}
-                className="flex-1 min-w-[120px] flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg border border-stone-200/60 bg-stone-50 hover:bg-stone-100 text-xs font-semibold text-stone-600 hover:text-stone-900 cursor-pointer transition-all active:scale-95"
+                className="flex-1 min-w-[120px] flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg border border-stone-200/60 dark:border-stone-800 bg-stone-50 dark:bg-[#202020] hover:bg-stone-100 dark:hover:bg-stone-800 text-xs font-semibold text-stone-600 dark:text-stone-300 hover:text-stone-900 dark:hover:text-stone-100 cursor-pointer transition-all active:scale-95"
               >
-                <Lightbulb className="h-3.5 w-3.5 text-stone-400" />
+                <Lightbulb className="h-3.5 w-3.5 text-stone-400 dark:text-stone-500" />
                 <span>+ Callout</span>
               </button>
               <button
@@ -1530,17 +1549,17 @@ export const EditorArea: React.FC = () => {
                   const newBlockId = addBlock(activePage.id, "image", "", selectedBlockId, { url: undefined, width: 100 });
                   focusBlockInput(newBlockId);
                 }}
-                className="flex-1 min-w-[120px] flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg border border-stone-200/60 bg-stone-50 hover:bg-stone-100 text-xs font-semibold text-stone-600 hover:text-stone-900 cursor-pointer transition-all active:scale-95"
+                className="flex-1 min-w-[120px] flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg border border-stone-200/60 dark:border-stone-800 bg-stone-50 dark:bg-[#202020] hover:bg-stone-100 dark:hover:bg-stone-800 text-xs font-semibold text-stone-600 dark:text-stone-300 hover:text-stone-900 dark:hover:text-stone-100 cursor-pointer transition-all active:scale-95"
               >
-                <ImageIcon className="h-3.5 w-3.5 text-stone-400" />
+                <ImageIcon className="h-3.5 w-3.5 text-stone-400 dark:text-stone-500" />
                 <span>+ Image</span>
               </button>
               <button
                 id="bottom-insert-subpage-btn"
                 onClick={() => createPage(activePage.id, selectedBlockId)}
-                className="flex-1 min-w-[120px] flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg border border-stone-200/60 bg-stone-50 hover:bg-stone-100 text-xs font-semibold text-stone-600 hover:text-stone-900 cursor-pointer transition-all active:scale-95"
+                className="flex-1 min-w-[120px] flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg border border-stone-200/60 dark:border-stone-800 bg-stone-50 dark:bg-[#202020] hover:bg-stone-100 dark:hover:bg-stone-800 text-xs font-semibold text-stone-600 dark:text-stone-300 hover:text-stone-900 dark:hover:text-stone-100 cursor-pointer transition-all active:scale-95"
               >
-                <Plus className="h-3.5 w-3.5 text-stone-400" />
+                <Plus className="h-3.5 w-3.5 text-stone-400 dark:text-stone-500" />
                 <span>+ Inline Subpage</span>
               </button>
             </div>
@@ -1548,12 +1567,12 @@ export const EditorArea: React.FC = () => {
         </div>
 
         {/* Quick visual metadata panel at the bottom */}
-        <div className="pt-8 border-t border-stone-100 flex flex-wrap items-center justify-between gap-4 select-none shrink-0">
-          <div className="flex items-center gap-1.5 text-xs text-stone-400 font-sans font-medium">
+        <div className="pt-8 border-t border-stone-100 dark:border-stone-800/80 flex flex-wrap items-center justify-between gap-4 select-none shrink-0">
+          <div className="flex items-center gap-1.5 text-xs text-stone-400 dark:text-stone-500 font-sans font-medium">
             <Calendar className="h-3.5 w-3.5" />
             <span>Created {new Date(activePage.createdAt).toLocaleDateString()}</span>
           </div>
-          <div className="text-[11px] text-stone-400 font-mono">
+          <div className="text-[11px] text-stone-400 dark:text-stone-500 font-mono">
             {wordCount} words • {charCount} characters
           </div>
         </div>

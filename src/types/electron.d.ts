@@ -11,6 +11,15 @@ export interface RecentWorkspace {
   lastOpenedAt: number;
 }
 
+export interface MenuState {
+  hasActivePage: boolean;
+  selectedBlockId: string | null;
+  sidebarOpen: boolean;
+  isFullWidth: boolean;
+  favoritePages: { id: string; title: string; icon?: string | null }[];
+  recentPages: { id: string; title: string; icon?: string | null }[];
+}
+
 export interface IElectronAPI {
   isElectron: boolean;
   clipboard: {
@@ -18,7 +27,7 @@ export interface IElectronAPI {
     readText: () => Promise<string>;
   };
   fileSystem: {
-    exportFile: (filename: string, content: string, mimeType?: string) => Promise<boolean>;
+    exportFile: (filename: string, content: string | Uint8Array, mimeType?: string) => Promise<boolean>;
     importFile: (acceptFilter?: string) => Promise<{ filename: string; content: string } | null>;
   };
   dialogs: {
@@ -46,6 +55,10 @@ export interface IElectronAPI {
     getRecents: () => Promise<RecentWorkspace[]>;
     removeRecent: (folderPath: string) => Promise<boolean>;
     delete: (folderPath: string) => Promise<boolean>;
+  };
+  menu?: {
+    onAction: (callback: (action: string, payload?: any) => void) => () => void;
+    updateState: (state: MenuState) => void;
   };
 }
 

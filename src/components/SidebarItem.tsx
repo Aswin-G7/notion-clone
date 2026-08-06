@@ -82,8 +82,8 @@ export const SidebarItem: React.FC<SidebarItemProps> = ({
         style={{ paddingLeft: `${level * 12 + 12}px` }}
         className={`group relative flex items-center justify-between py-1.5 pr-2 rounded-md cursor-pointer text-sm font-medium transition-colors select-none ${
           isActive
-            ? "bg-stone-200/60 text-stone-900"
-            : "text-stone-600 hover:bg-stone-100 hover:text-stone-900"
+            ? "bg-stone-200/80 dark:bg-stone-800 text-stone-900 dark:text-stone-100 font-semibold"
+            : "text-stone-600 dark:text-stone-400 hover:bg-stone-200/50 dark:hover:bg-stone-800/60 hover:text-stone-900 dark:hover:text-stone-200"
         }`}
       >
         <div className="flex items-center min-w-0 flex-1 gap-1">
@@ -91,7 +91,7 @@ export const SidebarItem: React.FC<SidebarItemProps> = ({
           <button
             id={`toggle-expand-btn-${page.id}`}
             onClick={handleToggleExpand}
-            className={`p-0.5 rounded-sm hover:bg-stone-200/80 text-stone-400 hover:text-stone-600 transition-transform ${
+            className={`p-0.5 rounded-sm hover:bg-stone-200/80 dark:hover:bg-stone-700 text-stone-400 hover:text-stone-600 dark:hover:text-stone-200 transition-transform ${
               !hasChildren ? "opacity-0 cursor-default" : ""
             }`}
           >
@@ -104,7 +104,7 @@ export const SidebarItem: React.FC<SidebarItemProps> = ({
 
           {/* Page Icon */}
           <span className="flex items-center justify-center text-base w-4 h-4 shrink-0">
-            {page.icon ? page.icon : <FileText className="h-4 w-4 text-stone-400" />}
+            {page.icon ? page.icon : <FileText className="h-4 w-4 text-stone-400 dark:text-stone-500" />}
           </span>
 
           {/* Title */}
@@ -114,7 +114,7 @@ export const SidebarItem: React.FC<SidebarItemProps> = ({
         </div>
 
         {/* Hover Action Controls */}
-        <div className="absolute right-2 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 flex items-center gap-0.5 bg-gradient-to-l from-stone-100 via-stone-100 pl-2 group-hover:from-transparent group-hover:via-stone-100/10 group-active:bg-transparent">
+        <div className="absolute right-2 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 flex items-center gap-0.5 bg-stone-100 dark:bg-stone-800 pl-1.5 rounded-md shadow-2xs">
           {/* Favorite Toggle */}
           <button
             id={`fav-btn-${page.id}`}
@@ -123,8 +123,8 @@ export const SidebarItem: React.FC<SidebarItemProps> = ({
               e.stopPropagation();
               onToggleFavorite(page.id, !page.isFavorite);
             }}
-            className={`p-1 rounded hover:bg-stone-200 transition-colors ${
-              page.isFavorite ? "text-amber-500" : "text-stone-400 hover:text-stone-600"
+            className={`p-1 rounded hover:bg-stone-200 dark:hover:bg-stone-700 transition-colors ${
+              page.isFavorite ? "text-amber-500" : "text-stone-400 hover:text-stone-600 dark:hover:text-stone-200"
             }`}
           >
             <Star className={`h-3.5 w-3.5 ${page.isFavorite ? "fill-amber-500" : ""}`} />
@@ -139,7 +139,7 @@ export const SidebarItem: React.FC<SidebarItemProps> = ({
               setIsExpanded(true);
               onCreateChild(page.id);
             }}
-            className="p-1 rounded hover:bg-stone-200 text-stone-400 hover:text-stone-600 transition-colors"
+            className="p-1 rounded hover:bg-stone-200 dark:hover:bg-stone-700 text-stone-400 hover:text-stone-600 dark:hover:text-stone-200 transition-colors"
           >
             <Plus className="h-3.5 w-3.5" />
           </button>
@@ -152,7 +152,7 @@ export const SidebarItem: React.FC<SidebarItemProps> = ({
               e.stopPropagation();
               onDelete(page.id);
             }}
-            className="p-1 rounded hover:bg-stone-200 text-stone-400 hover:text-red-600 transition-colors"
+            className="p-1 rounded hover:bg-stone-200 dark:hover:bg-stone-700 text-stone-400 hover:text-red-600 dark:hover:text-red-400 transition-colors"
           >
             <Trash2 className="h-3.5 w-3.5" />
           </button>
@@ -169,7 +169,7 @@ export const SidebarItem: React.FC<SidebarItemProps> = ({
             transition={{ duration: 0.15, ease: "easeInOut" }}
             className="overflow-hidden"
           >
-            <div className="border-l border-stone-200/60 ml-[15px] pl-0.5">
+            <div className="border-l border-stone-200/60 dark:border-stone-800 ml-[15px] pl-0.5">
               {children.map((child) => (
                 <SidebarItem
                   key={child.id}

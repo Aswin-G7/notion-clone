@@ -38,7 +38,7 @@ export const ToggleBlock: React.FC<ToggleBlockProps> = ({
             collapsed: !block.data.collapsed,
           });
         }}
-        className="mt-1 p-0.5 text-stone-400 hover:text-stone-700 hover:bg-stone-100 rounded transition-colors cursor-pointer select-none shrink-0"
+        className="mt-1 p-0.5 text-stone-400 dark:text-stone-500 hover:text-stone-700 dark:hover:text-stone-200 hover:bg-stone-100 dark:hover:bg-stone-800 rounded transition-colors cursor-pointer select-none shrink-0"
         title={block.data.collapsed ? "Expand toggle" : "Collapse toggle"}
       >
         <ChevronRight
@@ -53,8 +53,8 @@ export const ToggleBlock: React.FC<ToggleBlockProps> = ({
         onChange={(val) => handleBlockChange(block.id, val)}
         onKeyDown={(e) => handleKeyDown(e, block)}
         placeholder="Toggle"
-        className="font-sans font-medium text-stone-800 text-[14.5px] leading-relaxed py-0.5"
-        placeholderClassName="text-stone-300 font-sans font-medium text-[14.5px] leading-relaxed py-0.5"
+        className="font-sans font-medium text-stone-800 dark:text-[#d3d3d3] text-[14.5px] leading-relaxed py-0.5"
+        placeholderClassName="text-stone-300 dark:text-stone-600 font-sans font-medium text-[14.5px] leading-relaxed py-0.5"
         onFocus={() => setSelectedBlockId(null)}
         isSelected={isSelected}
       />

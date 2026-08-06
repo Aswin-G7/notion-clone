@@ -6,6 +6,8 @@ import { favoritesService } from "../services/FavoritesService";
 import { trashService } from "../services/TrashService";
 import { recentPagesService } from "../services/RecentPagesService";
 import { persistenceService, CURRENT_SCHEMA_VERSION, WorkspaceSnapshot } from "../services/PersistenceService";
+import { exportService, WorkspaceImporter } from "../services/export";
+import { pageImportService } from "../services/import";
 import { platform } from "../platform";
 import { resolveNextActivePage } from "../utils/navigation";
 
@@ -80,7 +82,8 @@ interface AppContextType {
     rawMatchEnd?: number
   ) => void;
   exportWorkspace: () => void;
-  importWorkspace: (jsonString: string) => void;
+  importWorkspace: (providedContent?: string | Uint8Array | ArrayBuffer) => Promise<boolean>;
+  importPage: (providedFile?: { filename: string; content: string | Uint8Array }) => Promise<string | null>;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -899,33 +902,108 @@ const getLastSubtreeBlockId = (targetId: string, blocks: Block[]): string => {
 
   const activePage = pages.find((page) => page.id === activePageId && !page.isDeleted) || null;
 
-  const exportWorkspace = useCallback(() => {
-    const snapshot: WorkspaceSnapshot = {
-      version: CURRENT_SCHEMA_VERSION,
-      timestamp: Date.now(),
-      pages,
-      activePageId,
-      sidebarOpen,
-    };
-    const jsonStr = persistenceService.exportWorkspace(snapshot);
-    const filename = `workspace-backup-${new Date().toISOString().slice(0, 10)}.json`;
-    platform.fileSystem.exportFile(filename, jsonStr, "application/json");
+  const exportWorkspace = useCallback(async () => {
+    try {
+      const activePages = pages.filter((p) => !p.isDeleted);
+      const wsInfo = platform.workspace.isSupported
+        ? await platform.workspace.getActive()
+        : null;
+      const workspaceName = wsInfo?.name || "Workspace";
+
+      await exportService.exportWorkspace("workspace", activePages, {
+        allPages: activePages,
+        workspaceName,
+        activePageId,
+        sidebarOpen,
+      });
+    } catch (err: any) {
+      console.error("[AppContext] Export workspace failed:", err);
+      platform.dialogs.alert(err?.message || "Failed to export workspace backup.");
+    }
   }, [pages, activePageId, sidebarOpen]);
 
-  const importWorkspace = useCallback((jsonString: string) => {
+  const importWorkspace = useCallback(async (providedContent?: string | Uint8Array | ArrayBuffer) => {
     try {
-      const snapshot = persistenceService.importWorkspace(jsonString);
+      let content = providedContent;
+      if (!content) {
+        const fileResult = await platform.fileSystem.importFile(".zip,.json");
+        if (!fileResult) return false;
+        content = fileResult.content;
+      }
+
+      const snapshot = await WorkspaceImporter.importWorkspace(content);
       setPages(snapshot.pages);
       setActivePageIdState(snapshot.activePageId);
       if (typeof snapshot.sidebarOpen === "boolean") {
         setSidebarOpen(snapshot.sidebarOpen);
       }
       persistenceService.saveWorkspace(snapshot);
+      platform.dialogs.alert("Workspace restored successfully!");
+      return true;
     } catch (err: any) {
-      console.error("Failed to import workspace:", err);
-      platform.dialogs.alert(err?.message || "Failed to import workspace file.");
+      console.error("[AppContext] Import workspace failed:", err);
+      platform.dialogs.alert(err?.message || "Failed to import workspace backup archive.");
+      return false;
     }
   }, []);
+
+  const importPage = useCallback(
+    async (providedFile?: { filename: string; content: string | Uint8Array }) => {
+      try {
+        let fileResult = providedFile;
+        if (!fileResult) {
+          const acceptFilter = pageImportService.getAcceptFilter();
+          const result = await platform.fileSystem.importFile(acceptFilter);
+          if (!result) return null;
+          fileResult = result;
+        }
+
+        const { filename, content } = fileResult;
+        const parsedData = await pageImportService.importPage(filename, content);
+
+        const newId = `page-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`;
+        const now = Date.now();
+
+        const newPage: Page = {
+          id: newId,
+          title: parsedData.title || "Imported Page",
+          icon: parsedData.icon || "📄",
+          coverImage: parsedData.coverImage || null,
+          parentId: null,
+          children: [],
+          blocks: parsedData.blocks,
+          createdAt: now,
+          updatedAt: now,
+          lastOpenedAt: now,
+        };
+
+        setPages((prev) => [...prev, newPage]);
+        setActivePageIdState(newId);
+
+        const firstBlockId = newPage.blocks[0]?.id;
+        if (firstBlockId) {
+          setSelectedBlockId(firstBlockId);
+          setHighlightedBlockId(firstBlockId);
+
+          setTimeout(() => {
+            const blockEl = document.querySelector(
+              `[data-block-id="${firstBlockId}"] [contenteditable="true"], [data-block-id="${firstBlockId}"] input, [data-block-id="${firstBlockId}"] textarea`
+            );
+            if (blockEl && blockEl instanceof HTMLElement) {
+              blockEl.focus();
+            }
+          }, 150);
+        }
+
+        return newId;
+      } catch (err: any) {
+        console.error("[AppContext] Import page failed:", err);
+        platform.dialogs.alert(err?.message || "Failed to import page file.");
+        return null;
+      }
+    },
+    []
+  );
 
   return (
     <AppContext.Provider
@@ -974,6 +1052,7 @@ const getLastSubtreeBlockId = (targetId: string, blocks: Block[]): string => {
         navigateToResult,
         exportWorkspace,
         importWorkspace,
+        importPage,
       }}
     >
       {children}

@@ -705,6 +705,7 @@ interface RichTextEditorProps {
   placeholderClassName?: string;
   isSelected?: boolean;
   style?: React.CSSProperties;
+  spellCheck?: boolean;
 }
 
 export const RichTextEditor: React.FC<RichTextEditorProps> = ({
@@ -715,9 +716,10 @@ export const RichTextEditor: React.FC<RichTextEditorProps> = ({
   onFocus,
   placeholder,
   className,
-  placeholderClassName = "text-stone-300",
+  placeholderClassName = "text-stone-300 dark:text-stone-600",
   isSelected = false,
   style,
+  spellCheck = true,
 }) => {
   const lastHtmlRef = useRef(value);
 
@@ -725,14 +727,14 @@ export const RichTextEditor: React.FC<RichTextEditorProps> = ({
     namespace: `block-${id}`,
     nodes: [LinkNode, AutoLinkNode],
     theme: {
-      paragraph: "m-0 whitespace-pre-wrap break-words",
+      paragraph: "m-0 whitespace-pre-wrap break-words text-stone-800 dark:text-[#d3d3d3]",
       link: "text-blue-600 dark:text-blue-400 underline hover:text-blue-800 dark:hover:text-blue-300 cursor-pointer",
       text: {
         bold: "font-bold",
         italic: "italic",
         underline: "underline",
         strikethrough: "line-through",
-        code: "bg-stone-100 dark:bg-stone-800 text-stone-800 dark:text-stone-200 px-1 py-0.5 rounded font-mono text-[13px]",
+        code: "bg-stone-100 dark:bg-stone-800/80 text-stone-800 dark:text-stone-200 border border-stone-200/60 dark:border-stone-700/60 px-1.5 py-0.5 rounded font-mono text-[13px]",
       },
     },
     onError: (error: Error) => {
@@ -768,8 +770,9 @@ export const RichTextEditor: React.FC<RichTextEditorProps> = ({
           contentEditable={
             <ContentEditable
               id={id}
-              className={`outline-none w-full bg-transparent ${className}`}
+              className={`outline-none w-full bg-transparent caret-stone-900 dark:caret-stone-100 selection:bg-blue-100 dark:selection:bg-blue-900/60 ${className}`}
               style={style}
+              spellCheck={spellCheck}
             />
           }
           placeholder={

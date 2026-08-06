@@ -47,7 +47,7 @@ export const DividerBlock: React.FC<DividerBlockProps> = ({
       onFocus={() => setSelectedBlockId(block.id)}
       className="py-4 w-full cursor-pointer group/divider flex items-center outline-none"
     >
-      <div className="w-full border-t border-stone-200 group-focus/divider:border-stone-400 transition-colors" />
+      <div className="w-full border-t border-stone-200 dark:border-stone-800 group-focus/divider:border-stone-400 dark:group-focus/divider:border-stone-500 transition-colors" />
     </div>
   );
 };

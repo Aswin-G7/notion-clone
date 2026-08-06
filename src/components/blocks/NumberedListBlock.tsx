@@ -32,7 +32,7 @@ export const NumberedListBlock: React.FC<NumberedListBlockProps> = ({
 
   return (
     <div className="flex items-start gap-2 w-full py-0.5">
-      <span className="text-stone-400 font-sans font-medium select-none text-[14px] leading-relaxed pt-0.5 w-5 text-right shrink-0">
+      <span className="text-stone-400 dark:text-stone-500 font-sans font-medium select-none text-[14px] leading-relaxed pt-0.5 w-5 text-right shrink-0">
         {index}.
       </span>
       <RichTextEditor
@@ -41,8 +41,8 @@ export const NumberedListBlock: React.FC<NumberedListBlockProps> = ({
         onChange={(val) => handleBlockChange(block.id, val)}
         onKeyDown={(e) => handleKeyDown(e, block)}
         placeholder="List item"
-        className="font-sans text-stone-800 text-[14.5px] leading-relaxed py-0.5"
-        placeholderClassName="text-stone-300 font-sans text-[14.5px] leading-relaxed py-0.5"
+        className="font-sans text-stone-800 dark:text-[#d3d3d3] text-[14.5px] leading-relaxed py-0.5"
+        placeholderClassName="text-stone-300 dark:text-stone-600 font-sans text-[14.5px] leading-relaxed py-0.5"
         onFocus={() => setSelectedBlockId(null)}
         isSelected={isSelected}
       />

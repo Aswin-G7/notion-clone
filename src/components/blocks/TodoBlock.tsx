@@ -27,7 +27,7 @@ export const TodoBlock: React.FC<TodoBlockProps> = ({
         type="checkbox"
         checked={!!block.data.checked}
         onChange={() => updateBlockData(activePageId, block.id, { checked: !block.data.checked })}
-        className="mt-1 h-4 w-4 rounded border-stone-300 text-stone-800 focus:ring-stone-400 cursor-pointer accent-stone-700 shrink-0"
+        className="mt-1 h-4 w-4 rounded border-stone-300 dark:border-stone-600 text-stone-800 dark:text-stone-200 focus:ring-stone-400 dark:focus:ring-stone-500 cursor-pointer accent-stone-700 dark:accent-stone-300 shrink-0"
       />
       <RichTextEditor
         id={`block-input-${block.id}`}
@@ -35,10 +35,10 @@ export const TodoBlock: React.FC<TodoBlockProps> = ({
         onChange={(val) => handleBlockChange(block.id, val)}
         onKeyDown={(e) => handleKeyDown(e, block)}
         placeholder="To-do"
-        className={`font-sans text-stone-800 text-[14.5px] leading-relaxed py-0.5 ${
-          block.data.checked ? "line-through text-stone-400" : ""
+        className={`font-sans text-[14.5px] leading-relaxed py-0.5 ${
+          block.data.checked ? "line-through text-stone-400 dark:text-stone-500" : "text-stone-800 dark:text-[#d3d3d3]"
         }`}
-        placeholderClassName="text-stone-300 font-sans text-[14.5px] leading-relaxed py-0.5"
+        placeholderClassName="text-stone-300 dark:text-stone-600 font-sans text-[14.5px] leading-relaxed py-0.5"
         onFocus={() => setSelectedBlockId(null)}
         isSelected={isSelected}
       />

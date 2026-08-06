@@ -1,7 +1,7 @@
 import { IFileSystemProvider, ImportedFileResult } from "../interfaces";
 
 export class ElectronFileSystemProvider implements IFileSystemProvider {
-  async exportFile(filename: string, content: string, mimeType?: string): Promise<boolean> {
+  async exportFile(filename: string, content: string | Uint8Array, mimeType?: string): Promise<boolean> {
     if (window.electronAPI) {
       return await window.electronAPI.fileSystem.exportFile(filename, content, mimeType);
     }

@@ -38,22 +38,22 @@ export const ChildPageBlock: React.FC<ChildPageBlockProps> = ({
       onKeyDown={(e) => handleChildPageKeyDown(e, block)}
       onFocus={() => setSelectedBlockId(block.id)}
       tabIndex={0}
-      className="flex items-center justify-between w-full p-3 rounded-lg border border-stone-200/80 bg-white hover:bg-stone-50/50 hover:border-stone-300 cursor-pointer transition-all group/childcard shadow-sm outline-none focus:ring-1 focus:ring-stone-400"
+      className="flex items-center justify-between w-full p-3 rounded-lg border border-stone-200/80 dark:border-stone-800 bg-white dark:bg-[#202020] hover:bg-stone-50/50 dark:hover:bg-[#252525] hover:border-stone-300 dark:hover:border-stone-700 cursor-pointer transition-all group/childcard shadow-sm outline-none focus:ring-1 focus:ring-stone-400 dark:focus:ring-stone-600"
     >
       <div className="flex items-center gap-3 min-w-0">
         <span className="text-2xl shrink-0 group-hover/childcard:scale-110 transition-transform duration-150">
           {childPage.icon || "📄"}
         </span>
         <div className="flex flex-col min-w-0">
-          <span className="font-sans font-semibold text-[13.5px] text-stone-700 group-hover/childcard:text-stone-950 truncate">
+          <span className="font-sans font-semibold text-[13.5px] text-stone-700 dark:text-stone-200 group-hover/childcard:text-stone-950 dark:group-hover/childcard:text-white truncate">
             {childPage.title.trim() === "" ? "Untitled Page" : childPage.title}
           </span>
-          <span className="text-[10px] text-stone-400 font-sans">
+          <span className="text-[10px] text-stone-400 dark:text-stone-500 font-sans">
             Click to open inline child page
           </span>
         </div>
       </div>
-      <ChevronRight className="h-4 w-4 text-stone-400 group-hover/childcard:translate-x-0.5 transition-transform shrink-0" />
+      <ChevronRight className="h-4 w-4 text-stone-400 dark:text-stone-500 group-hover/childcard:translate-x-0.5 transition-transform shrink-0" />
     </div>
   );
 };

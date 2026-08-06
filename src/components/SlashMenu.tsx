@@ -211,7 +211,7 @@ export const SlashMenu: React.FC<SlashMenuProps> = ({
       <div
         ref={menuRef}
         id="slash-menu-empty"
-        className="absolute z-50 left-0 mt-7 w-72 bg-white rounded-lg border border-stone-200 shadow-xl p-3 text-xs text-stone-400 italic font-sans"
+        className="absolute z-50 left-0 mt-7 w-72 bg-white dark:bg-[#202020] rounded-lg border border-stone-200 dark:border-stone-700 shadow-xl dark:shadow-2xl p-3 text-xs text-stone-400 dark:text-stone-500 italic font-sans"
       >
         No matching commands
       </div>
@@ -222,9 +222,9 @@ export const SlashMenu: React.FC<SlashMenuProps> = ({
     <div
       ref={menuRef}
       id="slash-menu-container"
-      className="absolute z-50 left-0 mt-7 w-72 max-h-80 overflow-y-auto bg-white rounded-lg border border-stone-200 shadow-xl py-1.5 flex flex-col scrollbar-thin select-none"
+      className="absolute z-50 left-0 mt-7 w-72 max-h-80 overflow-y-auto bg-white dark:bg-[#202020] rounded-lg border border-stone-200 dark:border-stone-700 shadow-xl dark:shadow-2xl py-1.5 flex flex-col scrollbar-thin select-none"
     >
-      <div className="px-3 py-1 text-[10px] font-bold text-stone-400 uppercase tracking-wider border-b border-stone-50 pb-1.5 mb-1">
+      <div className="px-3 py-1 text-[10px] font-bold text-stone-400 dark:text-stone-500 uppercase tracking-wider border-b border-stone-100 dark:border-stone-800 pb-1.5 mb-1">
         Basic blocks
       </div>
       <div className="flex-1 overflow-y-auto space-y-[2px] px-1">
@@ -243,20 +243,20 @@ export const SlashMenu: React.FC<SlashMenuProps> = ({
               onMouseEnter={() => setSelectedIndex(idx)}
               className={`w-full flex items-center gap-3 px-2.5 py-1.5 rounded-md text-left transition-colors cursor-pointer ${
                 isActive
-                  ? "bg-stone-100 text-stone-900"
-                  : "bg-transparent text-stone-600"
+                  ? "bg-stone-100 dark:bg-[#2c2c2c] text-stone-900 dark:text-stone-100"
+                  : "bg-transparent text-stone-600 dark:text-stone-300"
               }`}
             >
-              <div className={`p-1 rounded bg-stone-50 flex items-center justify-center shrink-0 border border-stone-150 ${
-                isActive ? "bg-white" : ""
+              <div className={`p-1 rounded bg-stone-50 dark:bg-[#191919] flex items-center justify-center shrink-0 border border-stone-200/60 dark:border-stone-700 ${
+                isActive ? "bg-white dark:bg-[#252525]" : ""
               }`}>
                 {cmd.icon}
               </div>
               <div className="flex-1 min-w-0">
-                <div className="text-[12.5px] font-semibold text-stone-800 font-sans">
+                <div className="text-[12.5px] font-semibold text-stone-800 dark:text-stone-100 font-sans">
                   {cmd.label}
                 </div>
-                <div className="text-[10px] text-stone-400 font-sans leading-normal truncate">
+                <div className="text-[10px] text-stone-400 dark:text-stone-500 font-sans leading-normal truncate">
                   {cmd.description}
                 </div>
               </div>

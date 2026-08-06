@@ -18,15 +18,15 @@ export const QuoteBlock: React.FC<QuoteBlockProps> = ({
   isSelected,
 }) => {
   return (
-    <div className="flex items-stretch border-l-4 border-stone-300 pl-4 py-0.5 w-full">
+    <div className="flex items-stretch border-l-4 border-stone-300 dark:border-stone-600 pl-4 py-0.5 w-full">
       <RichTextEditor
         id={`block-input-${block.id}`}
         value={block.data.text || ""}
         onChange={(val) => handleBlockChange(block.id, val)}
         onKeyDown={(e) => handleKeyDown(e, block)}
         placeholder="Empty quote"
-        className="font-sans text-stone-700 italic text-[14.5px] leading-relaxed py-0.5"
-        placeholderClassName="text-stone-300 font-sans text-[14.5px] leading-relaxed py-0.5"
+        className="font-sans text-stone-700 dark:text-[#d3d3d3] italic text-[14.5px] leading-relaxed py-0.5"
+        placeholderClassName="text-stone-300 dark:text-stone-600 font-sans text-[14.5px] leading-relaxed py-0.5"
         onFocus={() => setSelectedBlockId(null)}
         isSelected={isSelected}
       />

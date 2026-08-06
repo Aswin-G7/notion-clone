@@ -1,7 +1,7 @@
 import { IFileSystemProvider, ImportedFileResult } from "../interfaces";
 
 export class BrowserFileSystemProvider implements IFileSystemProvider {
-  async exportFile(filename: string, content: string, mimeType = "application/json"): Promise<boolean> {
+  async exportFile(filename: string, content: string | Uint8Array, mimeType = "application/octet-stream"): Promise<boolean> {
     try {
       const blob = new Blob([content], { type: mimeType });
       const url = URL.createObjectURL(blob);
@@ -19,7 +19,7 @@ export class BrowserFileSystemProvider implements IFileSystemProvider {
     }
   }
 
-  async importFile(acceptFilter = ".json"): Promise<ImportedFileResult | null> {
+  async importFile(acceptFilter = ".zip,.json"): Promise<ImportedFileResult | null> {
     return new Promise((resolve) => {
       const input = document.createElement("input");
       input.type = "file";
@@ -34,14 +34,25 @@ export class BrowserFileSystemProvider implements IFileSystemProvider {
         }
 
         const reader = new FileReader();
+        const isZip = file.name.toLowerCase().endsWith(".zip");
+
+        if (isZip) {
+          reader.readAsArrayBuffer(file);
+        } else {
+          reader.readAsText(file);
+        }
+
         reader.onload = (event) => {
-          const content = event.target?.result as string;
-          resolve({ filename: file.name, content: content || "" });
+          const result = event.target?.result;
+          if (isZip && result instanceof ArrayBuffer) {
+            resolve({ filename: file.name, content: new Uint8Array(result) });
+          } else {
+            resolve({ filename: file.name, content: (result as string) || "" });
+          }
         };
         reader.onerror = () => {
           resolve(null);
         };
-        reader.readAsText(file);
       };
 
       input.click();

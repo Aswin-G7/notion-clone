@@ -6,6 +6,7 @@ import {
   IDialogProvider,
   ISettingsProvider,
   IWorkspaceProvider,
+  IMenuProvider,
 } from "./interfaces";
 import { BrowserPersistenceProvider } from "./browser/BrowserPersistenceProvider";
 import { BrowserClipboardProvider } from "./browser/BrowserClipboardProvider";
@@ -13,11 +14,13 @@ import { BrowserFileSystemProvider } from "./browser/BrowserFileSystemProvider";
 import { BrowserDialogProvider } from "./browser/BrowserDialogProvider";
 import { BrowserSettingsProvider } from "./browser/BrowserSettingsProvider";
 import { BrowserWorkspaceProvider } from "./browser/BrowserWorkspaceProvider";
+import { BrowserMenuProvider } from "./browser/BrowserMenuProvider";
 import { ElectronClipboardProvider } from "./electron/ElectronClipboardProvider";
 import { ElectronFileSystemProvider } from "./electron/ElectronFileSystemProvider";
 import { ElectronDialogProvider } from "./electron/ElectronDialogProvider";
 import { SQLitePersistenceProvider } from "./electron/SQLitePersistenceProvider";
 import { ElectronWorkspaceProvider } from "./electron/ElectronWorkspaceProvider";
+import { ElectronMenuProvider } from "./electron/ElectronMenuProvider";
 
 class PlatformBridgeContainer {
   private providers: PlatformProviders;
@@ -34,6 +37,7 @@ class PlatformBridgeContainer {
       dialogs: isElectron ? new ElectronDialogProvider() : new BrowserDialogProvider(),
       settings: new BrowserSettingsProvider(),
       workspace: isElectron ? new ElectronWorkspaceProvider() : new BrowserWorkspaceProvider(),
+      menu: isElectron ? new ElectronMenuProvider() : new BrowserMenuProvider(),
     };
   }
 
@@ -67,6 +71,10 @@ class PlatformBridgeContainer {
 
   public get workspace(): IWorkspaceProvider {
     return this.providers.workspace;
+  }
+
+  public get menu(): IMenuProvider {
+    return this.providers.menu;
   }
 
   /**

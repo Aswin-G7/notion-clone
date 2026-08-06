@@ -18,11 +18,11 @@ export interface IClipboardProvider {
 
 export interface ImportedFileResult {
   filename: string;
-  content: string;
+  content: string | Uint8Array;
 }
 
 export interface IFileSystemProvider {
-  exportFile(filename: string, content: string, mimeType?: string): Promise<boolean>;
+  exportFile(filename: string, content: string | Uint8Array, mimeType?: string): Promise<boolean>;
   importFile(acceptFilter?: string): Promise<ImportedFileResult | null>;
   readFileAsDataUrl(file: File): Promise<string>;
 }
@@ -64,6 +64,21 @@ export interface IWorkspaceProvider {
   delete(folderPath: string): Promise<boolean>;
 }
 
+export interface MenuState {
+  hasActivePage: boolean;
+  selectedBlockId: string | null;
+  sidebarOpen: boolean;
+  isFullWidth: boolean;
+  favoritePages: { id: string; title: string; icon?: string | null }[];
+  recentPages: { id: string; title: string; icon?: string | null }[];
+}
+
+export interface IMenuProvider {
+  isSupported: boolean;
+  onAction(callback: (action: string, payload?: any) => void): () => void;
+  updateState(state: MenuState): void;
+}
+
 export interface PlatformProviders {
   persistence: IPersistenceProvider;
   clipboard: IClipboardProvider;
@@ -71,4 +86,5 @@ export interface PlatformProviders {
   dialogs: IDialogProvider;
   settings: ISettingsProvider;
   workspace: IWorkspaceProvider;
+  menu: IMenuProvider;
 }

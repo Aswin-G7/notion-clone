@@ -28,7 +28,7 @@ export const BlockToolbar: React.FC<BlockToolbarProps> = ({
         id={`block-toolbar-plus-${blockId}`}
         onClick={onPlusClick}
         type="button"
-        className="w-5 h-5 flex items-center justify-center text-stone-400 hover:text-stone-800 hover:bg-stone-100 rounded transition-colors cursor-pointer"
+        className="w-5 h-5 flex items-center justify-center text-stone-400 dark:text-stone-500 hover:text-stone-800 dark:hover:text-stone-200 hover:bg-stone-100 dark:hover:bg-stone-800 rounded transition-colors cursor-pointer"
         title="Click to add a block below"
       >
         <Plus className="h-3.5 w-3.5" />
@@ -48,7 +48,7 @@ export const BlockToolbar: React.FC<BlockToolbarProps> = ({
         type="button"
         {...(dragHandleListeners || {})}
         {...(dragHandleAttributes || {})}
-        className="w-5 h-6 flex items-center justify-center text-stone-300 hover:text-stone-700 hover:bg-stone-100 rounded transition-colors cursor-grab active:cursor-grabbing"
+        className="w-5 h-6 flex items-center justify-center text-stone-300 dark:text-stone-600 hover:text-stone-700 dark:hover:text-stone-200 hover:bg-stone-100 dark:hover:bg-stone-800 rounded transition-colors cursor-grab active:cursor-grabbing"
         title="Drag to reorder / Click to select block"
       >
         <GripVertical className="h-3.5 w-3.5" />

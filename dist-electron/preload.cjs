@@ -51,6 +51,16 @@ var electronAPI = {
     getRecents: () => import_electron.ipcRenderer.invoke("workspace:getRecents"),
     removeRecent: (folderPath) => import_electron.ipcRenderer.invoke("workspace:removeRecent", folderPath),
     delete: (folderPath) => import_electron.ipcRenderer.invoke("workspace:delete", folderPath)
+  },
+  menu: {
+    onAction: (callback) => {
+      const handler = (_event, action, payload) => callback(action, payload);
+      import_electron.ipcRenderer.on("menu:action", handler);
+      return () => {
+        import_electron.ipcRenderer.removeListener("menu:action", handler);
+      };
+    },
+    updateState: (state) => import_electron.ipcRenderer.send("menu:updateState", state)
   }
 };
 import_electron.contextBridge.exposeInMainWorld("electronAPI", electronAPI);

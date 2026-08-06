@@ -154,17 +154,17 @@ export const SearchModal: React.FC = () => {
   return (
     <div
       id="search-modal-backdrop"
-      className="fixed inset-0 z-50 bg-stone-900/40 backdrop-blur-xs flex items-start justify-center pt-16 sm:pt-24 px-4 transition-all"
+      className="fixed inset-0 z-50 bg-stone-900/40 dark:bg-stone-950/60 backdrop-blur-xs flex items-start justify-center pt-16 sm:pt-24 px-4 transition-all"
       onClick={() => setIsSearchOpen(false)}
     >
       <div
         id="search-modal-container"
-        className="w-full max-w-2xl bg-white border border-stone-200/80 rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[75vh] animate-in fade-in zoom-in-95 duration-150 select-none"
+        className="w-full max-w-2xl bg-white dark:bg-[#1f1f1f] border border-stone-200/80 dark:border-stone-800 rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[75vh] animate-in fade-in zoom-in-95 duration-150 select-none"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Search Header Input */}
-        <div className="flex items-center gap-3 px-4 py-3.5 border-b border-stone-200/80 bg-stone-50/50">
-          <Search className="h-4 w-4 text-stone-400 shrink-0" />
+        <div className="flex items-center gap-3 px-4 py-3.5 border-b border-stone-200/80 dark:border-stone-800 bg-stone-50/50 dark:bg-[#191919]">
+          <Search className="h-4 w-4 text-stone-400 dark:text-stone-500 shrink-0" />
           <input
             ref={inputRef}
             id="global-search-input"
@@ -173,17 +173,17 @@ export const SearchModal: React.FC = () => {
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={handleKeyDown}
-            className="flex-1 bg-transparent text-sm font-sans text-stone-800 placeholder-stone-400 outline-none border-none"
+            className="flex-1 bg-transparent text-sm font-sans text-stone-800 dark:text-stone-100 placeholder-stone-400 dark:placeholder-stone-500 outline-none border-none"
           />
           {query && (
             <button
               onClick={() => setQuery("")}
-              className="p-1 text-stone-400 hover:text-stone-600 rounded-md hover:bg-stone-200/50 transition-colors"
+              className="p-1 text-stone-400 dark:text-stone-500 hover:text-stone-600 dark:hover:text-stone-300 rounded-md hover:bg-stone-200/50 dark:hover:bg-stone-800 transition-colors cursor-pointer"
             >
               <X className="h-3.5 w-3.5" />
             </button>
           )}
-          <kbd className="hidden sm:inline-flex items-center px-1.5 py-0.5 text-[10px] font-mono text-stone-400 bg-stone-200/60 rounded border border-stone-300/60">
+          <kbd className="hidden sm:inline-flex items-center px-1.5 py-0.5 text-[10px] font-mono text-stone-400 dark:text-stone-500 bg-stone-200/60 dark:bg-stone-800 rounded border border-stone-300/60 dark:border-stone-700">
             ESC
           </kbd>
         </div>
@@ -196,21 +196,21 @@ export const SearchModal: React.FC = () => {
           {query.trim() === "" ? (
             /* Recent Pages List when search is empty */
             <div className="p-2 space-y-1">
-              <div className="px-2 pb-1 text-[11px] font-bold text-stone-400 uppercase tracking-wider">
+              <div className="px-2 pb-1 text-[11px] font-bold text-stone-400 dark:text-stone-500 uppercase tracking-wider">
                 Pages in Workspace
               </div>
               {pages.map((page) => (
                 <div
                   key={page.id}
                   onClick={() => navigateToResult(page.id, null)}
-                  className="flex items-center gap-2.5 px-3 py-2 rounded-lg cursor-pointer text-xs hover:bg-stone-100/80 transition-colors"
+                  className="flex items-center gap-2.5 px-3 py-2 rounded-lg cursor-pointer text-xs hover:bg-stone-100/80 dark:hover:bg-stone-800/50 transition-colors"
                 >
                   <span className="text-base shrink-0">{page.icon || "📄"}</span>
                   <div className="flex flex-col min-w-0 flex-1">
-                    <span className="font-semibold text-stone-800 truncate">
+                    <span className="font-semibold text-stone-800 dark:text-stone-100 truncate">
                       {page.title.trim() === "" ? "Untitled" : page.title}
                     </span>
-                    <span className="text-[11px] text-stone-400 truncate font-normal">
+                    <span className="text-[11px] text-stone-400 dark:text-stone-500 truncate font-normal">
                       {page.blocks.length} blocks • Updated {new Date(page.updatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                     </span>
                   </div>
@@ -225,7 +225,7 @@ export const SearchModal: React.FC = () => {
                   {/* Page Header */}
                   <div
                     onClick={() => navigateToResult(group.pageId, null)}
-                    className="flex items-center gap-2 px-3 py-1.5 rounded-md hover:bg-stone-100/60 cursor-pointer text-xs font-semibold text-stone-600"
+                    className="flex items-center gap-2 px-3 py-1.5 rounded-md hover:bg-stone-100/60 dark:hover:bg-stone-800/50 cursor-pointer text-xs font-semibold text-stone-600 dark:text-stone-400"
                   >
                     <span className="text-sm shrink-0">{group.pageIcon || "📄"}</span>
                     <span className="truncate">{group.pageTitle}</span>
@@ -251,18 +251,18 @@ export const SearchModal: React.FC = () => {
                           }
                           className={`flex items-center gap-2.5 px-3 py-2 rounded-lg cursor-pointer text-xs transition-all ${
                             isSelected
-                              ? "bg-amber-500/10 text-stone-900 border border-amber-300/60 shadow-2xs"
-                              : "hover:bg-stone-100/70 text-stone-700 border border-transparent"
+                              ? "bg-amber-500/10 dark:bg-amber-500/20 text-stone-900 dark:text-stone-100 border border-amber-300/60 dark:border-amber-700/60 shadow-2xs"
+                              : "hover:bg-stone-100/70 dark:hover:bg-stone-800/40 text-stone-700 dark:text-stone-300 border border-transparent"
                           }`}
                         >
-                          <div className="shrink-0 p-1 rounded bg-stone-100 border border-stone-200/60">
+                          <div className="shrink-0 p-1 rounded bg-stone-100 dark:bg-stone-800 border border-stone-200/60 dark:border-stone-700">
                             {getBlockIcon(match.blockType)}
                           </div>
 
                           <div className="flex-1 min-w-0">
-                            <p className="text-stone-700 truncate font-sans text-[12px] leading-relaxed">
+                            <p className="text-stone-700 dark:text-stone-300 truncate font-sans text-[12px] leading-relaxed">
                               {match.snippet.substring(0, match.matchStart)}
-                              <mark className="bg-amber-200/90 text-amber-950 font-semibold rounded-xs px-0.5 mx-0.5">
+                              <mark className="bg-amber-200/90 dark:bg-amber-900/80 text-amber-950 dark:text-amber-100 font-semibold rounded-xs px-0.5 mx-0.5">
                                 {match.snippet.substring(match.matchStart, match.matchEnd)}
                               </mark>
                               {match.snippet.substring(match.matchEnd)}
@@ -270,7 +270,7 @@ export const SearchModal: React.FC = () => {
                           </div>
 
                           {isSelected && (
-                            <CornerDownLeft className="h-3.5 w-3.5 text-stone-400 shrink-0" />
+                            <CornerDownLeft className="h-3.5 w-3.5 text-stone-400 dark:text-stone-500 shrink-0" />
                           )}
                         </div>
                       );
@@ -282,8 +282,8 @@ export const SearchModal: React.FC = () => {
           ) : (
             /* No Results Match State */
             <div className="py-12 text-center space-y-1">
-              <p className="text-sm font-medium text-stone-600">No matching results</p>
-              <p className="text-xs text-stone-400">
+              <p className="text-sm font-medium text-stone-600 dark:text-stone-300">No matching results</p>
+              <p className="text-xs text-stone-400 dark:text-stone-500">
                 No blocks or titles found matching &quot;{query}&quot;
               </p>
             </div>
@@ -291,20 +291,20 @@ export const SearchModal: React.FC = () => {
         </div>
 
         {/* Modal Keyboard Navigation Footer */}
-        <div className="px-4 py-2 border-t border-stone-200/80 bg-stone-50/70 flex items-center justify-between text-[11px] text-stone-400 font-sans">
+        <div className="px-4 py-2 border-t border-stone-200/80 dark:border-stone-800 bg-stone-50/70 dark:bg-[#191919] flex items-center justify-between text-[11px] text-stone-400 dark:text-stone-500 font-sans">
           <div className="flex items-center gap-3">
             <span className="flex items-center gap-1">
-              <kbd className="px-1 py-0.5 bg-stone-200/60 border border-stone-300/60 rounded text-[10px]">
+              <kbd className="px-1 py-0.5 bg-stone-200/60 dark:bg-stone-800 border border-stone-300/60 dark:border-stone-700 rounded text-[10px]">
                 <ArrowUp className="h-2.5 w-2.5 inline" />
               </kbd>
-              <kbd className="px-1 py-0.5 bg-stone-200/60 border border-stone-300/60 rounded text-[10px]">
+              <kbd className="px-1 py-0.5 bg-stone-200/60 dark:bg-stone-800 border border-stone-300/60 dark:border-stone-700 rounded text-[10px]">
                 <ArrowDown className="h-2.5 w-2.5 inline" />
               </kbd>
               <span className="ml-0.5">Navigate</span>
             </span>
 
             <span className="flex items-center gap-1">
-              <kbd className="px-1 py-0.5 bg-stone-200/60 border border-stone-300/60 rounded text-[10px]">
+              <kbd className="px-1 py-0.5 bg-stone-200/60 dark:bg-stone-800 border border-stone-300/60 dark:border-stone-700 rounded text-[10px]">
                 ↵
               </kbd>
               <span>Select</span>

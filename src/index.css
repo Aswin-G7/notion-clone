@@ -1,10 +1,46 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
 @import "tailwindcss";
 
+@custom-variant dark (&:where(.dark, .dark *));
+
 @theme {
   --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
   --font-display: "Outfit", sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+}
+
+body {
+  background-color: #ffffff;
+  color: #1c1917;
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+html.dark body {
+  background-color: #191919;
+  color: #d3d3d3;
+}
+
+:root {
+  --editor-background: #ffffff;
+  --editor-surface: #fcfbf9;
+  --editor-hover: #f5f5f4;
+  --editor-selection: rgba(59, 130, 246, 0.15);
+  --editor-border: #e7e5e4;
+  --editor-text-primary: #1c1917;
+  --editor-text-secondary: #78716c;
+  --editor-muted: #a8a29e;
+}
+
+html.dark {
+  --editor-background: #191919;
+  --editor-surface: #202020;
+  --editor-hover: #262626;
+  --editor-selection: rgba(59, 130, 246, 0.25);
+  --editor-border: #2e2e2e;
+  --editor-text-primary: #d3d3d3;
+  --editor-text-secondary: #999999;
+  --editor-muted: #666666;
 }
 
 /* Base custom scrollbar styles to match Notion style */
