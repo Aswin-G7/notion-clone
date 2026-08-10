@@ -3,7 +3,7 @@
   "description": "Cross-Platform Workspace Desktop Application",
   "author": "Workspace Team",
   "private": true,
-  "version": "0.0.0",
+  "version": "1.0.0-rc1",
   "main": "dist-electron/main.js",
   "type": "module",
   "scripts": {
