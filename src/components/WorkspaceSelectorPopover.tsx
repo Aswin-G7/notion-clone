@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { Folder, Plus, FolderOpen, History, Check, X, Trash2, HardDrive, ChevronRight, FolderX } from "lucide-react";
 import { platform, WorkspaceInfo, RecentWorkspace } from "../platform";
+import { notificationService } from "../services/NotificationService";
 
 interface WorkspaceSelectorPopoverProps {
   onClose: () => void;
@@ -15,6 +16,14 @@ export const WorkspaceSelectorPopover: React.FC<WorkspaceSelectorPopoverProps> =
 
   useEffect(() => {
     loadWorkspaceData();
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        onClose();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
   }, []);
 
   const loadWorkspaceData = async () => {
@@ -36,10 +45,12 @@ export const WorkspaceSelectorPopover: React.FC<WorkspaceSelectorPopoverProps> =
     try {
       const result = await platform.workspace.open();
       if (result) {
+        notificationService.success("Workspace Opened", `Switched to "${result.name}"`);
         window.location.reload();
       }
-    } catch (e) {
+    } catch (e: any) {
       console.error("Failed to open workspace:", e);
+      notificationService.error("Open Workspace Failed", e?.message || "Could not open workspace folder.");
     } finally {
       setLoading(false);
     }
@@ -57,11 +68,13 @@ export const WorkspaceSelectorPopover: React.FC<WorkspaceSelectorPopoverProps> =
       if (selectedPath) {
         const result = await platform.workspace.create(selectedPath, name);
         if (result) {
+          notificationService.success("Workspace Created", `Created "${result.name}"`);
           window.location.reload();
         }
       }
-    } catch (e) {
+    } catch (e: any) {
       console.error("Failed to create workspace:", e);
+      notificationService.error("Create Workspace Failed", e?.message || "Could not create workspace.");
     } finally {
       setLoading(false);
     }
@@ -73,10 +86,12 @@ export const WorkspaceSelectorPopover: React.FC<WorkspaceSelectorPopoverProps> =
     try {
       const result = await platform.workspace.switch(path);
       if (result) {
+        notificationService.success("Workspace Switched", `Switched to "${result.name}"`);
         window.location.reload();
       }
-    } catch (e) {
+    } catch (e: any) {
       console.error("Failed to switch workspace:", e);
+      notificationService.error("Switch Workspace Failed", e?.message || "Could not switch workspace.");
     } finally {
       setLoading(false);
     }
@@ -88,8 +103,10 @@ export const WorkspaceSelectorPopover: React.FC<WorkspaceSelectorPopoverProps> =
     try {
       await platform.workspace.removeRecent(path);
       setRecents((prev) => prev.filter((r) => r.path !== path));
-    } catch (e) {
+      notificationService.info("Removed from Recents", path);
+    } catch (e: any) {
       console.error("Failed to remove recent workspace:", e);
+      notificationService.error("Action Failed", e?.message || "Failed to remove recent workspace.");
     }
   };
 
@@ -100,14 +117,16 @@ export const WorkspaceSelectorPopover: React.FC<WorkspaceSelectorPopoverProps> =
     try {
       const success = await platform.workspace.delete(path);
       if (success) {
+        notificationService.success("Workspace Deleted", path);
         if (activeWorkspace?.path === path) {
           window.location.reload();
         } else {
           setRecents((prev) => prev.filter((r) => r.path !== path));
         }
       }
-    } catch (e) {
+    } catch (e: any) {
       console.error("Failed to delete workspace:", e);
+      notificationService.error("Delete Workspace Failed", e?.message || "Could not delete workspace.");
     } finally {
       setLoading(false);
     }
@@ -116,18 +135,18 @@ export const WorkspaceSelectorPopover: React.FC<WorkspaceSelectorPopoverProps> =
   return (
     <div
       id="workspace-selector-popover"
-      className="absolute top-12 left-2 z-50 w-80 sm:w-96 bg-white border border-stone-200 rounded-xl shadow-2xl overflow-hidden font-sans text-stone-800"
+      className="absolute top-12 left-2 z-50 w-80 sm:w-96 bg-white dark:bg-[#1f1f1f] border border-stone-200 dark:border-stone-800 rounded-xl shadow-2xl overflow-hidden font-sans text-stone-800 dark:text-stone-100"
       onClick={(e) => e.stopPropagation()}
     >
       {/* Header */}
-      <div className="p-3 border-b border-stone-150 bg-stone-50/80 flex items-center justify-between">
-        <div className="flex items-center gap-2 text-xs font-bold text-stone-700 uppercase tracking-wider">
-          <HardDrive className="h-4 w-4 text-stone-600 shrink-0" />
+      <div className="p-3 border-b border-stone-150 dark:border-stone-800 bg-stone-50/80 dark:bg-[#191919] flex items-center justify-between">
+        <div className="flex items-center gap-2 text-xs font-bold text-stone-700 dark:text-stone-300 uppercase tracking-wider">
+          <HardDrive className="h-4 w-4 text-stone-600 dark:text-stone-400 shrink-0" />
           <span>Workspace Manager</span>
         </div>
         <button
           onClick={onClose}
-          className="p-1 text-stone-400 hover:text-stone-700 hover:bg-stone-200/60 rounded transition-colors cursor-pointer"
+          className="p-1 text-stone-400 dark:text-stone-500 hover:text-stone-700 dark:hover:text-stone-200 hover:bg-stone-200/60 dark:hover:bg-stone-800 rounded transition-colors cursor-pointer"
         >
           <X className="h-4 w-4" />
         </button>
@@ -135,24 +154,24 @@ export const WorkspaceSelectorPopover: React.FC<WorkspaceSelectorPopoverProps> =
 
       <div className="p-3 space-y-3 max-h-[420px] overflow-y-auto">
         {/* Active Workspace Info */}
-        <div className="p-2.5 bg-stone-100/80 rounded-lg border border-stone-200/80 space-y-1">
-          <div className="text-[10px] font-bold text-stone-400 uppercase tracking-wider flex items-center justify-between">
+        <div className="p-2.5 bg-stone-100/80 dark:bg-stone-800/60 rounded-lg border border-stone-200/80 dark:border-stone-700/80 space-y-1">
+          <div className="text-[10px] font-bold text-stone-400 dark:text-stone-500 uppercase tracking-wider flex items-center justify-between">
             <span>Current Active Workspace</span>
-            <span className="inline-flex items-center gap-1 text-emerald-600 font-semibold lowercase">
+            <span className="inline-flex items-center gap-1 text-emerald-600 dark:text-emerald-400 font-semibold lowercase">
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
               active
             </span>
           </div>
           <div className="flex items-center justify-between gap-2 pt-0.5">
             <div className="flex items-center gap-2 min-w-0 flex-1">
-              <div className="w-7 h-7 rounded bg-stone-900 text-white font-bold text-xs flex items-center justify-center shrink-0">
+              <div className="w-7 h-7 rounded bg-stone-900 dark:bg-stone-100 text-white dark:text-stone-900 font-bold text-xs flex items-center justify-center shrink-0">
                 {activeWorkspace?.name?.[0]?.toUpperCase() || "W"}
               </div>
               <div className="min-w-0 flex-1">
-                <div className="text-xs font-bold text-stone-900 truncate">
+                <div className="text-xs font-bold text-stone-900 dark:text-stone-100 truncate">
                   {activeWorkspace?.name || "Default Workspace"}
                 </div>
-                <div className="text-[10px] text-stone-500 truncate" title={activeWorkspace?.path}>
+                <div className="text-[10px] text-stone-500 dark:text-stone-400 truncate" title={activeWorkspace?.path}>
                   {activeWorkspace?.path || "Local Storage"}
                 </div>
               </div>
@@ -162,7 +181,7 @@ export const WorkspaceSelectorPopover: React.FC<WorkspaceSelectorPopoverProps> =
                 type="button"
                 onClick={(e) => handleDeleteWorkspace(e, activeWorkspace.path)}
                 disabled={loading}
-                className="p-1.5 text-stone-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors cursor-pointer shrink-0"
+                className="p-1.5 text-stone-400 dark:text-stone-500 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/40 rounded transition-colors cursor-pointer shrink-0"
                 title="Permanently Delete Current Workspace"
               >
                 <Trash2 className="h-3.5 w-3.5" />
@@ -177,50 +196,50 @@ export const WorkspaceSelectorPopover: React.FC<WorkspaceSelectorPopoverProps> =
             type="button"
             onClick={handleOpenWorkspace}
             disabled={loading}
-            className="w-full flex items-center justify-between px-2.5 py-2 rounded-lg text-xs font-medium text-stone-700 hover:bg-stone-100 hover:text-stone-900 transition-colors cursor-pointer group"
+            className="w-full flex items-center justify-between px-2.5 py-2 rounded-lg text-xs font-medium text-stone-700 dark:text-stone-300 hover:bg-stone-100 dark:hover:bg-stone-800 hover:text-stone-900 dark:hover:text-stone-100 transition-colors cursor-pointer group"
           >
             <div className="flex items-center gap-2">
-              <FolderOpen className="h-4 w-4 text-stone-500 group-hover:text-stone-900" />
+              <FolderOpen className="h-4 w-4 text-stone-500 dark:text-stone-400 group-hover:text-stone-900 dark:group-hover:text-stone-100" />
               <span>Open Existing Workspace Folder</span>
             </div>
-            <ChevronRight className="h-3.5 w-3.5 text-stone-400" />
+            <ChevronRight className="h-3.5 w-3.5 text-stone-400 dark:text-stone-500" />
           </button>
 
           {!isCreating ? (
             <button
               type="button"
               onClick={() => setIsCreating(true)}
-              className="w-full flex items-center justify-between px-2.5 py-2 rounded-lg text-xs font-medium text-stone-700 hover:bg-stone-100 hover:text-stone-900 transition-colors cursor-pointer group"
+              className="w-full flex items-center justify-between px-2.5 py-2 rounded-lg text-xs font-medium text-stone-700 dark:text-stone-300 hover:bg-stone-100 dark:hover:bg-stone-800 hover:text-stone-900 dark:hover:text-stone-100 transition-colors cursor-pointer group"
             >
               <div className="flex items-center gap-2">
-                <Plus className="h-4 w-4 text-stone-500 group-hover:text-stone-900" />
+                <Plus className="h-4 w-4 text-stone-500 dark:text-stone-400 group-hover:text-stone-900 dark:group-hover:text-stone-100" />
                 <span>Create New Workspace Folder</span>
               </div>
-              <ChevronRight className="h-3.5 w-3.5 text-stone-400" />
+              <ChevronRight className="h-3.5 w-3.5 text-stone-400 dark:text-stone-500" />
             </button>
           ) : (
-            <form onSubmit={handleCreateWorkspace} className="p-2.5 bg-stone-50 rounded-lg border border-stone-200 space-y-2">
-              <div className="text-xs font-semibold text-stone-700">Workspace Name</div>
+            <form onSubmit={handleCreateWorkspace} className="p-2.5 bg-stone-50 dark:bg-stone-800/80 rounded-lg border border-stone-200 dark:border-stone-700 space-y-2">
+              <div className="text-xs font-semibold text-stone-700 dark:text-stone-200">Workspace Name</div>
               <input
                 type="text"
                 autoFocus
                 value={newWsName}
                 onChange={(e) => setNewWsName(e.target.value)}
                 placeholder="e.g. My Research Workspace"
-                className="w-full px-2.5 py-1.5 text-xs bg-white border border-stone-200 rounded-md focus:border-stone-400 focus:outline-none"
+                className="w-full px-2.5 py-1.5 text-xs bg-white dark:bg-[#191919] border border-stone-200 dark:border-stone-700 rounded-md focus:border-stone-400 dark:focus:border-stone-500 text-stone-900 dark:text-stone-100 placeholder-stone-400 dark:placeholder-stone-500 focus:outline-none"
               />
               <div className="flex items-center gap-2 pt-1">
                 <button
                   type="submit"
                   disabled={!newWsName.trim() || loading}
-                  className="flex-1 py-1.5 bg-stone-900 hover:bg-stone-800 disabled:opacity-50 text-white text-xs font-semibold rounded-md transition-colors cursor-pointer"
+                  className="flex-1 py-1.5 bg-stone-900 dark:bg-stone-100 hover:bg-stone-800 dark:hover:bg-stone-200 disabled:opacity-50 text-white dark:text-stone-900 text-xs font-semibold rounded-md transition-colors cursor-pointer"
                 >
                   Choose Folder & Create
                 </button>
                 <button
                   type="button"
                   onClick={() => setIsCreating(false)}
-                  className="px-2.5 py-1.5 bg-stone-200 hover:bg-stone-300 text-stone-700 text-xs font-semibold rounded-md transition-colors cursor-pointer"
+                  className="px-2.5 py-1.5 bg-stone-200 dark:bg-stone-700 hover:bg-stone-300 dark:hover:bg-stone-600 text-stone-700 dark:text-stone-200 text-xs font-semibold rounded-md transition-colors cursor-pointer"
                 >
                   Cancel
                 </button>
@@ -231,8 +250,8 @@ export const WorkspaceSelectorPopover: React.FC<WorkspaceSelectorPopoverProps> =
 
         {/* Recent Workspaces */}
         {recents.length > 0 && (
-          <div className="space-y-1.5 pt-1 border-t border-stone-150">
-            <div className="text-[10px] font-bold text-stone-400 uppercase tracking-wider flex items-center gap-1.5 px-1">
+          <div className="space-y-1.5 pt-1 border-t border-stone-150 dark:border-stone-800">
+            <div className="text-[10px] font-bold text-stone-400 dark:text-stone-500 uppercase tracking-wider flex items-center gap-1.5 px-1">
               <History className="h-3 w-3" />
               <span>Recent Workspaces</span>
             </div>
@@ -245,28 +264,28 @@ export const WorkspaceSelectorPopover: React.FC<WorkspaceSelectorPopoverProps> =
                     onClick={() => !isActive && handleSwitchWorkspace(recent.path)}
                     className={`flex items-center justify-between px-2.5 py-2 rounded-lg text-xs transition-colors cursor-pointer group ${
                       isActive
-                        ? "bg-stone-900 text-white font-semibold"
-                        : "hover:bg-stone-100 text-stone-700"
+                        ? "bg-stone-900 dark:bg-stone-100 text-white dark:text-stone-900 font-semibold"
+                        : "hover:bg-stone-100 dark:hover:bg-stone-800 text-stone-700 dark:text-stone-300"
                     }`}
                   >
                     <div className="flex items-center gap-2 min-w-0 pr-2">
-                      <Folder className={`h-4 w-4 shrink-0 ${isActive ? "text-white" : "text-stone-400 group-hover:text-stone-700"}`} />
+                      <Folder className={`h-4 w-4 shrink-0 ${isActive ? "text-white dark:text-stone-900" : "text-stone-400 dark:text-stone-500 group-hover:text-stone-700 dark:group-hover:text-stone-200"}`} />
                       <div className="min-w-0">
                         <div className="truncate font-medium">{recent.name}</div>
-                        <div className={`text-[10px] truncate ${isActive ? "text-stone-300" : "text-stone-400"}`} title={recent.path}>
+                        <div className={`text-[10px] truncate ${isActive ? "text-stone-300 dark:text-stone-600" : "text-stone-400 dark:text-stone-500"}`} title={recent.path}>
                           {recent.path}
                         </div>
                       </div>
                     </div>
                     <div className="flex items-center gap-1 shrink-0">
                       {isActive ? (
-                        <Check className="h-4 w-4 text-white" />
+                        <Check className="h-4 w-4 text-white dark:text-stone-900" />
                       ) : (
                         <>
                           <button
                             type="button"
                             onClick={(e) => handleRemoveRecent(e, recent.path)}
-                            className="p-1 rounded text-stone-400 hover:text-stone-800 hover:bg-stone-200/60 transition-colors opacity-0 group-hover:opacity-100 cursor-pointer"
+                            className="p-1 rounded text-stone-400 dark:text-stone-500 hover:text-stone-800 dark:hover:text-stone-100 hover:bg-stone-200/60 dark:hover:bg-stone-700 transition-colors opacity-0 group-hover:opacity-100 cursor-pointer"
                             title="Remove from recent list (keeps files on disk)"
                           >
                             <FolderX className="h-3.5 w-3.5" />
@@ -274,7 +293,7 @@ export const WorkspaceSelectorPopover: React.FC<WorkspaceSelectorPopoverProps> =
                           <button
                             type="button"
                             onClick={(e) => handleDeleteWorkspace(e, recent.path)}
-                            className="p-1 rounded text-stone-400 hover:text-red-600 hover:bg-red-50 transition-colors opacity-0 group-hover:opacity-100 cursor-pointer"
+                            className="p-1 rounded text-stone-400 dark:text-stone-500 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/40 transition-colors opacity-0 group-hover:opacity-100 cursor-pointer"
                             title="Permanently delete workspace folder from disk"
                           >
                             <Trash2 className="h-3.5 w-3.5" />

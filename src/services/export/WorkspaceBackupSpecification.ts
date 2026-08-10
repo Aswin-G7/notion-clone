@@ -25,14 +25,66 @@ export class WorkspaceBackupSpecification {
   ): Promise<Uint8Array> {
     const zip = new JSZip();
 
-    // Standardize & sanitize snapshot content
-    const cleanSnapshot: WorkspaceSnapshot = {
+    // Standardize & sanitize snapshot content clone
+    const cleanSnapshot: WorkspaceSnapshot = JSON.parse(JSON.stringify({
       version: CURRENT_SCHEMA_VERSION,
       timestamp: Date.now(),
       pages: snapshot.pages || [],
       activePageId: snapshot.activePageId || null,
       sidebarOpen: snapshot.sidebarOpen ?? true,
-    };
+    }));
+
+    // Extract and bundle assets into assets/ directory inside ZIP archive
+    const assetsFolder = zip.folder("assets");
+    if (assetsFolder) {
+      let counter = 1;
+
+      const processUrlForExport = async (url: string | null | undefined, prefix: string): Promise<string | null | undefined> => {
+        if (!url || typeof url !== "string") return url;
+
+        if (url.startsWith("data:")) {
+          const parsed = this.parseDataUrl(url);
+          if (parsed) {
+            const filename = `${prefix}_${counter++}.${parsed.extension}`;
+            const zipPath = `assets/${filename}`;
+            assetsFolder.file(filename, parsed.data);
+            return zipPath;
+          }
+          return url;
+        }
+
+        if (url.startsWith("app-asset://") || url.startsWith("assets/")) {
+          try {
+            const fetchUrl = url.startsWith("app-asset://") ? url : `app-asset://${url}`;
+            const res = await fetch(fetchUrl);
+            if (res.ok) {
+              const buffer = await res.arrayBuffer();
+              const bytes = new Uint8Array(buffer);
+              const ext = url.split(".").pop()?.split("?")[0] || "png";
+              const filename = `${prefix}_${counter++}.${ext}`;
+              const zipPath = `assets/${filename}`;
+              assetsFolder.file(filename, bytes);
+              return zipPath;
+            }
+          } catch (err) {
+            console.warn("[WorkspaceBackupSpecification] Could not fetch asset for export:", url, err);
+          }
+        }
+
+        return url;
+      };
+
+      for (const page of cleanSnapshot.pages) {
+        if (page.coverImage) {
+          page.coverImage = await processUrlForExport(page.coverImage, `cover_${page.id.slice(0, 8)}`);
+        }
+        for (const block of page.blocks || []) {
+          if (block.type === "image" && block.data?.url) {
+            block.data.url = await processUrlForExport(block.data.url, `img_${block.id.slice(0, 8)}`);
+          }
+        }
+      }
+    }
 
     const jsonString = JSON.stringify(cleanSnapshot, null, 2);
 
@@ -58,28 +110,6 @@ export class WorkspaceBackupSpecification {
       pageCount: cleanSnapshot.pages.length,
     };
     zip.file("settings.json", JSON.stringify(settingsData, null, 2));
-
-    // Extract assets into assets/ directory for archive portability
-    const assetsFolder = zip.folder("assets");
-    if (assetsFolder) {
-      let counter = 1;
-      for (const page of cleanSnapshot.pages) {
-        if (page.coverImage && page.coverImage.startsWith("data:")) {
-          const parsed = this.parseDataUrl(page.coverImage);
-          if (parsed) {
-            assetsFolder.file(`cover_${page.id.slice(0, 8)}.${parsed.extension}`, parsed.data);
-          }
-        }
-        for (const block of page.blocks || []) {
-          if (block.type === "image" && block.data?.url && block.data.url.startsWith("data:")) {
-            const parsed = this.parseDataUrl(block.data.url);
-            if (parsed) {
-              assetsFolder.file(`image_${counter++}.${parsed.extension}`, parsed.data);
-            }
-          }
-        }
-      }
-    }
 
     return await zip.generateAsync({ type: "uint8array" });
   }
@@ -126,21 +156,68 @@ export class WorkspaceBackupSpecification {
   ): Promise<string> {
     try {
       const zip = await JSZip.loadAsync(zipInput);
-      const jsonFile = zip.file("workspace.json") || zip.file("workspace.sqlite");
-      if (jsonFile) {
-        return await jsonFile.async("string");
+      let jsonFile = zip.file("workspace.json") || zip.file("workspace.sqlite");
+
+      if (!jsonFile) {
+        // Search for any .json file in root
+        const jsonFiles = zip.file(/\.json$/i);
+        if (jsonFiles.length > 0) {
+          jsonFile = jsonFiles.find(
+            (f) => !f.name.includes("metadata.json") && !f.name.includes("settings.json")
+          ) || jsonFiles[0];
+        }
       }
 
-      // Search for any .json file in root
-      const jsonFiles = zip.file(/\.json$/i);
-      if (jsonFiles.length > 0) {
-        const target = jsonFiles.find(
-          (f) => !f.name.includes("metadata.json") && !f.name.includes("settings.json")
-        ) || jsonFiles[0];
-        return await target.async("string");
+      if (!jsonFile) {
+        throw new Error("ZIP package missing 'workspace.json' backup file.");
       }
 
-      throw new Error("ZIP package missing 'workspace.json' backup file.");
+      const jsonString = await jsonFile.async("string");
+      let snapshot: any;
+      try {
+        snapshot = JSON.parse(jsonString);
+      } catch {
+        return jsonString;
+      }
+
+      if (!snapshot || !Array.isArray(snapshot.pages)) {
+        return jsonString;
+      }
+
+      // Convert bundled assets in ZIP to Data URLs for imported snapshot
+      const getAssetDataUrl = async (relPath: string): Promise<string | null> => {
+        const cleanPath = relPath.replace(/^app-asset:\/\//, "").replace(/^\//, "");
+        const zipAssetFile = zip.file(cleanPath) || zip.file(`assets/${cleanPath.replace(/^assets\//, "")}`);
+        if (!zipAssetFile) return null;
+
+        const base64 = await zipAssetFile.async("base64");
+        const ext = cleanPath.split(".").pop()?.toLowerCase() || "png";
+        const mimeMap: Record<string, string> = {
+          png: "image/png",
+          jpg: "image/jpeg",
+          jpeg: "image/jpeg",
+          gif: "image/gif",
+          webp: "image/webp",
+          svg: "image/svg+xml",
+        };
+        const mime = mimeMap[ext] || "image/png";
+        return `data:${mime};base64,${base64}`;
+      };
+
+      for (const page of snapshot.pages) {
+        if (page.coverImage && (page.coverImage.startsWith("assets/") || page.coverImage.startsWith("app-asset://"))) {
+          const dataUrl = await getAssetDataUrl(page.coverImage);
+          if (dataUrl) page.coverImage = dataUrl;
+        }
+        for (const block of page.blocks || []) {
+          if (block.type === "image" && block.data?.url && (block.data.url.startsWith("assets/") || block.data.url.startsWith("app-asset://"))) {
+            const dataUrl = await getAssetDataUrl(block.data.url);
+            if (dataUrl) block.data.url = dataUrl;
+          }
+        }
+      }
+
+      return JSON.stringify(snapshot);
     } catch (err: any) {
       throw new Error(`Failed to extract ZIP archive: ${err?.message || err}`);
     }

@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { Download, FileText, Code, FileCode, Archive, Check, X } from "lucide-react";
 import { useApp } from "../context/AppContext";
 import { exportService } from "../services/export";
+import { notificationService } from "../services/NotificationService";
 import { platform } from "../platform";
 
 interface ExportModalProps {
@@ -26,6 +27,18 @@ export const ExportModal: React.FC<ExportModalProps> = ({
   const [isExporting, setIsExporting] = useState<boolean>(false);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  React.useEffect(() => {
+    if (!isOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        onClose();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isOpen, onClose]);
 
   if (!isOpen) return null;
 
@@ -94,7 +107,9 @@ export const ExportModal: React.FC<ExportModalProps> = ({
           allPages: activePages,
           workspaceName,
         });
-        setSuccessMessage(`Successfully exported "${activePage.title || "Untitled"}"`);
+        const msg = `Successfully exported "${activePage.title || "Untitled"}" as ${selectedFormat.toUpperCase()}`;
+        setSuccessMessage(msg);
+        notificationService.success("Export Complete", msg);
       } else {
         await exportService.exportWorkspace("workspace", activePages, {
           allPages: activePages,
@@ -102,7 +117,9 @@ export const ExportModal: React.FC<ExportModalProps> = ({
           activePageId,
           sidebarOpen,
         });
-        setSuccessMessage(`Successfully exported workspace backup.`);
+        const msg = `Successfully exported workspace backup for "${workspaceName}".`;
+        setSuccessMessage(msg);
+        notificationService.success("Export Complete", msg);
       }
 
       setTimeout(() => {
@@ -118,7 +135,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-xs p-4">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-xs p-4" role="dialog" aria-modal="true" aria-label="Export Modal">
       <div className="w-full max-w-lg bg-white dark:bg-stone-900 rounded-xl shadow-2xl border border-stone-200 dark:border-stone-800 overflow-hidden flex flex-col">
         {/* Modal Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-stone-200 dark:border-stone-800">
@@ -130,7 +147,8 @@ export const ExportModal: React.FC<ExportModalProps> = ({
           </div>
           <button
             onClick={onClose}
-            className="p-1.5 text-stone-400 hover:text-stone-600 dark:hover:text-stone-200 rounded-lg hover:bg-stone-100 dark:hover:bg-stone-800 transition-colors"
+            aria-label="Close export modal"
+            className="p-1.5 text-stone-400 hover:text-stone-600 dark:hover:text-stone-200 rounded-lg hover:bg-stone-100 dark:hover:bg-stone-800 transition-colors cursor-pointer"
           >
             <X className="w-5 h-5" />
           </button>

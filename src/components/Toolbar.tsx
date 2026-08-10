@@ -15,10 +15,9 @@ export const Toolbar: React.FC = () => {
     deletePage,
     setActivePageId,
     setIsSearchOpen,
+    setIsExportOpen,
     importPage,
   } = useApp();
-
-  const [isExportModalOpen, setIsExportModalOpen] = useState(false);
 
   if (!activePage) {
     return (
@@ -67,8 +66,7 @@ export const Toolbar: React.FC = () => {
   };
 
   return (
-    <>
-      <header className="flex items-center justify-between h-11 border-b border-stone-200/40 dark:border-stone-800 px-4 shrink-0 bg-white dark:bg-stone-900 text-stone-800 dark:text-stone-200 select-none z-30 transition-colors">
+    <header className="flex items-center justify-between h-11 border-b border-stone-200/40 dark:border-stone-800 px-4 shrink-0 bg-white dark:bg-stone-900 text-stone-800 dark:text-stone-200 select-none z-30 transition-colors">
       {/* Left items (Sidebar toggle and Breadcrumbs) */}
       <div className="flex items-center min-w-0 flex-1 gap-2">
         {!sidebarOpen && (
@@ -147,7 +145,7 @@ export const Toolbar: React.FC = () => {
         {/* Export Page / Workspace */}
         <button
           id="toolbar-export-btn"
-          onClick={() => setIsExportModalOpen(true)}
+          onClick={() => setIsExportOpen(true)}
           className="p-1.5 rounded text-stone-400 hover:text-stone-700 dark:hover:text-stone-200 hover:bg-stone-100 dark:hover:bg-stone-800 transition-colors"
           title="Export document or workspace"
         >
@@ -179,11 +177,5 @@ export const Toolbar: React.FC = () => {
         </button>
       </div>
     </header>
-    <ExportModal
-      isOpen={isExportModalOpen}
-      onClose={() => setIsExportModalOpen(false)}
-      defaultScope="page"
-    />
-    </>
   );
 };

@@ -7,8 +7,10 @@ import {
   Trash2,
   RefreshCw,
   Maximize2,
+  AlertTriangle,
 } from "lucide-react";
 import { Block } from "../types";
+import { platform } from "../platform";
 
 interface ImageBlockProps {
   block: Block;
@@ -36,6 +38,7 @@ export const ImageBlock: React.FC<ImageBlockProps> = ({
   const [isDraggingOver, setIsDraggingOver] = useState(false);
   const [isResizing, setIsResizing] = useState(false);
   const [tempWidth, setTempWidth] = useState<number | null>(null);
+  const [hasImageError, setHasImageError] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -45,12 +48,22 @@ export const ImageBlock: React.FC<ImageBlockProps> = ({
   const caption = block.data.caption || "";
   const currentWidth = tempWidth ?? block.data.width ?? 100;
 
+  useEffect(() => {
+    setHasImageError(false);
+  }, [imageUrl]);
+
   // Handle file selection
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file && file.type.startsWith("image/")) {
-      const url = URL.createObjectURL(file);
-      onUpdateData({ url, width: 100 });
+      try {
+        const dataUrl = await platform.fileSystem.readFileAsDataUrl(file);
+        if (dataUrl) {
+          onUpdateData({ url: dataUrl, width: 100 });
+        }
+      } catch (err) {
+        console.error("Failed to read image file:", err);
+      }
     }
   };
 
@@ -69,15 +82,21 @@ export const ImageBlock: React.FC<ImageBlockProps> = ({
     setIsDraggingOver(false);
   };
 
-  const handleDrop = (e: React.DragEvent) => {
+  const handleDrop = async (e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
     setIsDraggingOver(false);
 
     const file = e.dataTransfer.files?.[0];
     if (file && file.type.startsWith("image/")) {
-      const url = URL.createObjectURL(file);
-      onUpdateData({ url, width: 100 });
+      try {
+        const dataUrl = await platform.fileSystem.readFileAsDataUrl(file);
+        if (dataUrl) {
+          onUpdateData({ url: dataUrl, width: 100 });
+        }
+      } catch (err) {
+        console.error("Failed to read dropped image file:", err);
+      }
     }
   };
 
@@ -260,6 +279,30 @@ export const ImageBlock: React.FC<ImageBlockProps> = ({
             </form>
           )}
         </div>
+      ) : hasImageError ? (
+        /* Image Load Error Fallback Card */
+        <div className="w-full rounded-xl border border-red-200 bg-red-50/50 p-4 flex flex-col items-center justify-center text-center space-y-2">
+          <AlertTriangle className="h-6 w-6 text-red-500" />
+          <p className="text-xs font-semibold text-stone-800">
+            Image failed to load or asset file is missing
+          </p>
+          <div className="flex items-center gap-2 pt-1">
+            <button
+              type="button"
+              onClick={() => onUpdateData({ url: undefined })}
+              className="px-3 py-1 bg-stone-900 hover:bg-stone-800 text-white text-xs font-semibold rounded-lg shadow-sm cursor-pointer"
+            >
+              Replace image
+            </button>
+            <button
+              type="button"
+              onClick={onDeleteBlock}
+              className="px-3 py-1 bg-stone-100 hover:bg-stone-200 text-stone-700 text-xs font-semibold rounded-lg cursor-pointer"
+            >
+              Remove block
+            </button>
+          </div>
+        </div>
       ) : (
         /* Image Display Box */
         <div
@@ -275,6 +318,7 @@ export const ImageBlock: React.FC<ImageBlockProps> = ({
             src={imageUrl}
             alt={caption || "Inserted image"}
             referrerPolicy="no-referrer"
+            onError={() => setHasImageError(true)}
             className="w-full h-auto object-contain max-h-[600px] rounded-xl block pointer-events-none select-none"
           />
 

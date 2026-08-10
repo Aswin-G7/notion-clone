@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useMemo, useCallback } from "react";
+import React, { createContext, useContext, useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { Page, Block, BlockType, ClipboardBlockData } from "../types";
 import { getTemplateById, instantiateTemplate } from "../templates/templateRegistry";
 import { searchService } from "../services/SearchService";
@@ -8,6 +8,9 @@ import { recentPagesService } from "../services/RecentPagesService";
 import { persistenceService, CURRENT_SCHEMA_VERSION, WorkspaceSnapshot } from "../services/PersistenceService";
 import { exportService, WorkspaceImporter } from "../services/export";
 import { pageImportService } from "../services/import";
+import { notificationService } from "../services/NotificationService";
+import { workspaceHistoryService } from "../services/WorkspaceHistoryService";
+import { isUserEditingText } from "../utils/dom";
 import { platform } from "../platform";
 import { resolveNextActivePage } from "../utils/navigation";
 
@@ -25,6 +28,10 @@ interface AppContextType {
   sidebarOpen: boolean;
   selectedBlockId: string | null;
   focusToken: number;
+  canUndo: boolean;
+  canRedo: boolean;
+  undo: () => boolean;
+  redo: () => boolean;
   triggerPageFocus: () => void;
   setSelectedBlockId: (id: string | null) => void;
   setSidebarOpen: (open: boolean) => void;
@@ -56,6 +63,7 @@ interface AppContextType {
   deleteBlock: (pageId: string, blockId: string) => void;
   reorderBlocks: (pageId: string, activeId: string, overId: string) => void;
   duplicateBlock: (pageId: string, blockId: string) => string | null;
+  duplicatePage: (id: string) => string | null;
   blockClipboard: ClipboardBlockData | null;
   setBlockClipboard: (data: ClipboardBlockData | null) => void;
   copyBlock: (pageId: string, blockId: string) => void;
@@ -71,6 +79,14 @@ interface AppContextType {
   emptyTrash: () => void;
   isSearchOpen: boolean;
   setIsSearchOpen: React.Dispatch<React.SetStateAction<boolean>>;
+  isSettingsOpen: boolean;
+  setIsSettingsOpen: (open: boolean) => void;
+  isTrashOpen: boolean;
+  setIsTrashOpen: (open: boolean) => void;
+  isExportOpen: boolean;
+  setIsExportOpen: (open: boolean) => void;
+  isTemplateModalOpen: boolean;
+  setIsTemplateModalOpen: (open: boolean) => void;
   highlightedBlockId: string | null;
   setHighlightedBlockId: React.Dispatch<React.SetStateAction<string | null>>;
   pendingSearchTarget: SearchNavigationTarget | null;
@@ -175,9 +191,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   }, []);
 
-  const setActivePageId = (id: string | null) => {
+  const pagesRef = useRef(pages);
+  pagesRef.current = pages;
+
+  const setActivePageId = useCallback((id: string | null, options?: { skipFocus?: boolean }) => {
     if (id) {
-      const targetPage = pages.find((p) => p.id === id);
+      const targetPage = pagesRef.current.find((p) => p.id === id);
       if (targetPage && targetPage.isDeleted) {
         return;
       }
@@ -188,13 +207,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
     setActivePageIdState(id);
     setSelectedBlockId(null);
-    triggerPageFocus();
+    if (!options?.skipFocus) {
+      triggerPageFocus();
+    }
     if (id) {
       platform.persistence.setItem(ACTIVE_PAGE_KEY, id);
     } else {
       platform.persistence.removeItem(ACTIVE_PAGE_KEY);
     }
-  };
+  }, []);
 
   const createPage = (parentId: string | null = null, insertAfterBlockId?: string | null) => {
     const newId = `page-${Math.random().toString(36).substr(2, 9)}`;
@@ -216,6 +237,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       updatedAt: now,
       lastOpenedAt: now,
     };
+
+    const prevActiveId = activePageId;
 
     setPages((prev) => {
       let updatedPages = [...prev, newPage];
@@ -260,6 +283,75 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     });
 
     setActivePageId(newId);
+    notificationService.info("Page created", "Untitled page added to workspace");
+
+    if (!workspaceHistoryService.isExecutingUndoRedo()) {
+      workspaceHistoryService.registerCommand({
+        id: `create_page_${newId}`,
+        description: "Create Page",
+        timestamp: Date.now(),
+        pageId: newId,
+        execute: () => {
+          setPages((prev) => {
+            if (prev.some((p) => p.id === newId)) return prev;
+            let updatedPages = [...prev, newPage];
+            if (parentId) {
+              updatedPages = updatedPages.map((page) => {
+                if (page.id === parentId) {
+                  const currentChildren = page.children || [];
+                  const newChildren = currentChildren.includes(newId) ? currentChildren : [...currentChildren, newId];
+                  const childBlock: Block = {
+                    id: `block-${Math.random().toString(36).substr(2, 9)}`,
+                    type: "child-page",
+                    data: { pageId: newId }
+                  };
+                  return {
+                    ...page,
+                    children: newChildren,
+                    blocks: [...page.blocks, childBlock],
+                    updatedAt: Date.now(),
+                  };
+                }
+                return page;
+              });
+            }
+            return updatedPages;
+          });
+          setActivePageId(newId);
+          notificationService.info("Page created", "Untitled page added to workspace");
+        },
+        undo: () => {
+          setPages((prev) => {
+            const filteredPages = prev.filter((p) => p.id !== newId);
+            if (!parentId) return filteredPages;
+            return filteredPages.map((page) => {
+              if (page.id === parentId) {
+                const newChildren = (page.children || []).filter((cId) => cId !== newId);
+                const newBlocks = page.blocks.filter(
+                  (b) => !(b.type === "child-page" && b.data?.pageId === newId)
+                );
+                return {
+                  ...page,
+                  children: newChildren,
+                  blocks: newBlocks,
+                  updatedAt: Date.now(),
+                };
+              }
+              return page;
+            });
+          });
+
+          setActivePageIdState((currentActiveId) => {
+            if (currentActiveId === newId) {
+              return prevActiveId && prevActiveId !== newId ? prevActiveId : parentId || null;
+            }
+            return currentActiveId;
+          });
+          notificationService.info("Page creation undone", "Untitled page removed.");
+        },
+      });
+    }
+
     return newId;
   };
 
@@ -273,6 +365,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       ...instantiated,
       lastOpenedAt: now,
     };
+
+    const prevActiveId = activePageId;
 
     setPages((prev) => {
       let updatedPages = [...prev, newPage];
@@ -301,10 +395,82 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           return page;
         });
       }
+
       return updatedPages;
     });
 
     setActivePageId(newPage.id);
+    notificationService.success("Page Created", `Created "${newPage.title}" from template.`);
+
+    if (!workspaceHistoryService.isExecutingUndoRedo()) {
+      workspaceHistoryService.registerCommand({
+        id: `create_page_template_${newPage.id}_${Date.now()}`,
+        description: `Create Page from Template (${template.name})`,
+        timestamp: Date.now(),
+        pageId: newPage.id,
+        execute: () => {
+          setPages((prev) => {
+            if (prev.some((p) => p.id === newPage.id)) return prev;
+            let updatedPages = [...prev, newPage];
+            if (parentId) {
+              updatedPages = updatedPages.map((page) => {
+                if (page.id === parentId) {
+                  const currentChildren = page.children || [];
+                  const newChildren = currentChildren.includes(newPage.id)
+                    ? currentChildren
+                    : [...currentChildren, newPage.id];
+                  const childBlock: Block = {
+                    id: `block-${Math.random().toString(36).substr(2, 9)}`,
+                    type: "child-page",
+                    data: { pageId: newPage.id },
+                  };
+                  return {
+                    ...page,
+                    children: newChildren,
+                    blocks: [...page.blocks, childBlock],
+                    updatedAt: Date.now(),
+                  };
+                }
+                return page;
+              });
+            }
+            return updatedPages;
+          });
+          setActivePageId(newPage.id);
+          notificationService.success("Page Created", `Created "${newPage.title}" from template.`);
+        },
+        undo: () => {
+          setPages((prev) => {
+            const filteredPages = prev.filter((p) => p.id !== newPage.id);
+            if (!parentId) return filteredPages;
+            return filteredPages.map((page) => {
+              if (page.id === parentId) {
+                const newChildren = (page.children || []).filter((cId) => cId !== newPage.id);
+                const newBlocks = page.blocks.filter(
+                  (b) => !(b.type === "child-page" && b.data?.pageId === newPage.id)
+                );
+                return {
+                  ...page,
+                  children: newChildren,
+                  blocks: newBlocks,
+                  updatedAt: Date.now(),
+                };
+              }
+              return page;
+            });
+          });
+
+          setActivePageIdState((currentActiveId) => {
+            if (currentActiveId === newPage.id) {
+              return prevActiveId && prevActiveId !== newPage.id ? prevActiveId : parentId || null;
+            }
+            return currentActiveId;
+          });
+          notificationService.info("Page creation undone", `"${newPage.title}" removed.`);
+        },
+      });
+    }
+
     return newPage.id;
   };
 
@@ -312,6 +478,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const template = getTemplateById(templateId);
     if (!template) return;
 
+    const targetPage = pages.find((p) => p.id === pageId);
+    if (!targetPage) return;
+
+    const oldState = { ...targetPage };
     const freshPage = instantiateTemplate(template);
 
     setPages((prev) =>
@@ -333,10 +503,51 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       })
     );
     setActivePageId(pageId);
+
+    if (!workspaceHistoryService.isExecutingUndoRedo()) {
+      workspaceHistoryService.registerCommand({
+        id: `apply_template_${pageId}_${Date.now()}`,
+        description: "Apply Template",
+        timestamp: Date.now(),
+        pageId: pageId,
+        execute: () => {
+          setPages((prev) =>
+            prev.map((p) => {
+              if (p.id === pageId) {
+                return {
+                  ...p,
+                  title:
+                    p.title === "Untitled Page" || p.title === "Untitled" || p.title.trim() === ""
+                      ? template.defaultTitle
+                      : p.title,
+                  icon: template.icon || p.icon,
+                  coverImage: template.coverImage || p.coverImage,
+                  blocks: freshPage.blocks,
+                  updatedAt: Date.now(),
+                };
+              }
+              return p;
+            })
+          );
+          notificationService.success("Template Applied", `Applied "${template.name}".`);
+        },
+        undo: () => {
+          setPages((prev) =>
+            prev.map((p) => (p.id === pageId ? { ...oldState } : p))
+          );
+          notificationService.info("Template application undone", `Restored "${oldState.title}".`);
+        },
+      });
+    }
   };
 
   const deletePage = (id: string) => {
-    // Check if the current activePageId or any of its ancestors is being deleted
+    const targetPage = pages.find((p) => p.id === id);
+    const pageTitle = targetPage?.title || "Untitled";
+
+    const prevPagesState = pages;
+    const prevActiveId = activePageId;
+
     let isActiveAffected = false;
     if (activePageId) {
       let curr: string | null = activePageId;
@@ -366,16 +577,124 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         createPage(null);
       }
     }
+
+    if (!workspaceHistoryService.isExecutingUndoRedo()) {
+      workspaceHistoryService.registerCommand({
+        id: `delete_page_${id}_${Date.now()}`,
+        description: "Delete Page",
+        timestamp: Date.now(),
+        pageId: id,
+        execute: () => {
+          setPages((prev) => trashService.softDeletePage(prev, id));
+          if (isActiveAffected && nextActiveId) {
+            setActivePageIdState(nextActiveId);
+          }
+          notificationService.info("Moved to Trash", `"${pageTitle}" was moved to Trash.`);
+        },
+        undo: () => {
+          setPages((currentPages) => trashService.restorePage(currentPages, id));
+          if (prevActiveId) {
+            setActivePageIdState(prevActiveId);
+          }
+          notificationService.success("Page restored", `"${pageTitle}" restored from Trash.`);
+        },
+      });
+    }
+
+    notificationService.success(
+      "Moved to Trash",
+      `"${pageTitle}" was moved to Trash.`,
+      {
+        label: "Undo",
+        onClick: () => {
+          if (workspaceHistoryService.canUndo()) {
+            workspaceHistoryService.undo();
+          } else {
+            restorePage(id);
+          }
+        },
+      }
+    );
+  };
+
+  const duplicatePage = (id: string): string | null => {
+    const pageToDup = pages.find((p) => p.id === id);
+    if (!pageToDup) return null;
+
+    workspaceHistoryService.startGroup("Duplicate Page", id);
+    try {
+      const newId = createPage(pageToDup.parentId);
+      updatePage(newId, {
+        title: `${pageToDup.title || "Untitled"} (Copy)`,
+        icon: pageToDup.icon,
+        coverImage: pageToDup.coverImage,
+        blocks: JSON.parse(JSON.stringify(pageToDup.blocks)),
+      });
+      notificationService.success("Page duplicated", `Copied "${pageToDup.title || "Untitled"}"`);
+      return newId;
+    } finally {
+      workspaceHistoryService.endGroup();
+    }
   };
 
   const updatePage = (id: string, updates: Partial<Page>) => {
+    const target = pages.find((p) => p.id === id);
+    if (!target) {
+      setPages((prev) =>
+        prev.map((page) =>
+          page.id === id ? { ...page, ...updates, updatedAt: Date.now() } : page
+        )
+      );
+      return;
+    }
+
+    const oldTitle = target.title;
+    const oldIcon = target.icon;
+    const oldCover = target.coverImage;
+
     setPages((prev) =>
       prev.map((page) =>
-        page.id === id
-          ? { ...page, ...updates, updatedAt: Date.now() }
-          : page
+        page.id === id ? { ...page, ...updates, updatedAt: Date.now() } : page
       )
     );
+
+    if (!workspaceHistoryService.isExecutingUndoRedo()) {
+      const isMeaningful =
+        (updates.title !== undefined && updates.title !== oldTitle) ||
+        (updates.icon !== undefined && updates.icon !== oldIcon) ||
+        (updates.coverImage !== undefined && updates.coverImage !== oldCover);
+
+      if (isMeaningful) {
+        workspaceHistoryService.registerCommand({
+          id: `update_page_${id}_${Date.now()}`,
+          description: updates.title !== undefined ? "Rename Page" : "Update Page",
+          timestamp: Date.now(),
+          pageId: id,
+          execute: () => {
+            setPages((prev) =>
+              prev.map((page) =>
+                page.id === id ? { ...page, ...updates, updatedAt: Date.now() } : page
+              )
+            );
+          },
+          undo: () => {
+            setPages((prev) =>
+              prev.map((page) =>
+                page.id === id
+                  ? {
+                      ...page,
+                      title: updates.title !== undefined ? oldTitle : page.title,
+                      icon: updates.icon !== undefined ? oldIcon : page.icon,
+                      coverImage: updates.coverImage !== undefined ? oldCover : page.coverImage,
+                      updatedAt: Date.now(),
+                    }
+                  : page
+              )
+            );
+          },
+        });
+      }
+    }
   };
 
 const getDescendantIds = (targetId: string, blocks: Block[]): string[] => {
@@ -454,6 +773,73 @@ const getLastSubtreeBlockId = (targetId: string, blocks: Block[]): string => {
       })
     );
 
+    if (!workspaceHistoryService.isExecutingUndoRedo()) {
+      workspaceHistoryService.registerCommand({
+        id: `add_block_${newBlockId}`,
+        description: "Add Block",
+        timestamp: Date.now(),
+        pageId: pageId,
+        execute: () => {
+          setPages((prev) =>
+            prev.map((page) => {
+              if (page.id !== pageId) return page;
+              let targetParentId: string | null = null;
+              if (extraData?.parentId !== undefined) {
+                targetParentId = extraData.parentId;
+              } else if (insertAfterBlockId) {
+                const targetBlock = page.blocks.find((b) => b.id === insertAfterBlockId);
+                targetParentId = targetBlock?.data?.parentId || null;
+              }
+
+              const newExtraData = { ...extraData };
+              delete (newExtraData as any).insertDirectlyAfter;
+
+              const newBlock: Block = {
+                id: newBlockId,
+                type,
+                data: {
+                  text,
+                  level: type === "heading" ? 2 : undefined,
+                  checked: type === "todo" ? false : undefined,
+                  ...newExtraData,
+                  parentId: targetParentId,
+                },
+              };
+
+              let newBlocks = [...page.blocks];
+              if (insertAfterBlockId) {
+                const targetId = extraData?.insertDirectlyAfter
+                  ? insertAfterBlockId
+                  : getLastSubtreeBlockId(insertAfterBlockId, newBlocks);
+                const idx = newBlocks.findIndex((b) => b.id === targetId);
+                if (idx !== -1) {
+                  newBlocks.splice(idx + 1, 0, newBlock);
+                } else {
+                  newBlocks.push(newBlock);
+                }
+              } else {
+                newBlocks.push(newBlock);
+              }
+
+              return { ...page, blocks: newBlocks, updatedAt: Date.now() };
+            })
+          );
+        },
+        undo: () => {
+          setPages((prev) =>
+            prev.map((page) => {
+              if (page.id !== pageId) return page;
+              return {
+                ...page,
+                blocks: page.blocks.filter((b) => b.id !== newBlockId),
+                updatedAt: Date.now(),
+              };
+            })
+          );
+        },
+      });
+    }
+
     setSelectedBlockId(newBlockId);
     return newBlockId;
   };
@@ -482,6 +868,9 @@ const getLastSubtreeBlockId = (targetId: string, blocks: Block[]): string => {
     type: BlockType,
     extraData?: Partial<Block["data"]>
   ) => {
+    const pageToModify = pages.find((p) => p.id === pageId);
+    const prevBlock = pageToModify?.blocks.find((b) => b.id === blockId);
+
     setPages((prev) =>
       prev.map((page) => {
         if (page.id !== pageId) return page;
@@ -506,6 +895,54 @@ const getLastSubtreeBlockId = (targetId: string, blocks: Block[]): string => {
         };
       })
     );
+
+    if (!workspaceHistoryService.isExecutingUndoRedo() && pageToModify && prevBlock) {
+      const oldBlock = JSON.parse(JSON.stringify(prevBlock));
+      workspaceHistoryService.registerCommand({
+        id: `update_block_type_${blockId}_${Date.now()}`,
+        description: "Change Block Type",
+        timestamp: Date.now(),
+        pageId: pageId,
+        execute: () => {
+          setPages((prev) =>
+            prev.map((page) => {
+              if (page.id !== pageId) return page;
+              return {
+                ...page,
+                blocks: page.blocks.map((block) =>
+                  block.id === blockId
+                    ? {
+                        ...block,
+                        type,
+                        data: {
+                          ...block.data,
+                          level: type === "heading" ? (extraData?.level || 2) : undefined,
+                          checked: type === "todo" ? (extraData?.checked !== undefined ? extraData.checked : false) : undefined,
+                          ...extraData,
+                        },
+                      }
+                    : block
+                ),
+                updatedAt: Date.now(),
+              };
+            })
+          );
+        },
+        undo: () => {
+          setPages((prev) =>
+            prev.map((page) =>
+              page.id === pageId
+                ? {
+                    ...page,
+                    blocks: page.blocks.map((b) => (b.id === blockId ? oldBlock : b)),
+                    updatedAt: Date.now(),
+                  }
+                : page
+            )
+          );
+        },
+      });
+    }
   };
 
   const updateBlockData = (
@@ -513,6 +950,9 @@ const getLastSubtreeBlockId = (targetId: string, blocks: Block[]): string => {
     blockId: string,
     data: Partial<Block["data"]>
   ) => {
+    const pageToModify = pages.find((p) => p.id === pageId);
+    const prevBlock = pageToModify?.blocks.find((b) => b.id === blockId);
+
     setPages((prev) =>
       prev.map((page) => {
         if (page.id !== pageId) return page;
@@ -534,9 +974,61 @@ const getLastSubtreeBlockId = (targetId: string, blocks: Block[]): string => {
         };
       })
     );
+
+    const isPureTextUpdate = Object.keys(data).length === 1 && "text" in data;
+
+    if (!isPureTextUpdate && !workspaceHistoryService.isExecutingUndoRedo() && pageToModify && prevBlock) {
+      const oldData = JSON.parse(JSON.stringify(prevBlock.data));
+      workspaceHistoryService.registerCommand({
+        id: `update_block_data_${blockId}_${Date.now()}`,
+        description: "Update Block Data",
+        timestamp: Date.now(),
+        pageId: pageId,
+        execute: () => {
+          setPages((prev) =>
+            prev.map((page) => {
+              if (page.id !== pageId) return page;
+              return {
+                ...page,
+                blocks: page.blocks.map((block) =>
+                  block.id === blockId
+                    ? {
+                        ...block,
+                        data: {
+                          ...block.data,
+                          ...data,
+                        },
+                      }
+                    : block
+                ),
+                updatedAt: Date.now(),
+              };
+            })
+          );
+        },
+        undo: () => {
+          setPages((prev) =>
+            prev.map((page) =>
+              page.id === pageId
+                ? {
+                    ...page,
+                    blocks: page.blocks.map((block) =>
+                      block.id === blockId ? { ...block, data: oldData } : block
+                    ),
+                    updatedAt: Date.now(),
+                  }
+                : page
+            )
+          );
+        },
+      });
+    }
   };
 
   const deleteBlock = (pageId: string, blockId: string) => {
+    const pageToModify = pages.find((p) => p.id === pageId);
+    const prevBlocks = pageToModify?.blocks;
+
     setPages((prev) =>
       prev.map((page) => {
         if (page.id !== pageId) return page;
@@ -569,6 +1061,47 @@ const getLastSubtreeBlockId = (targetId: string, blocks: Block[]): string => {
       })
     );
 
+    if (!workspaceHistoryService.isExecutingUndoRedo() && pageToModify && prevBlocks) {
+      workspaceHistoryService.registerCommand({
+        id: `delete_block_${blockId}_${Date.now()}`,
+        description: "Delete Block",
+        timestamp: Date.now(),
+        pageId: pageId,
+        execute: () => {
+          setPages((prev) =>
+            prev.map((page) => {
+              if (page.id !== pageId) return page;
+              const targetBlock = page.blocks.find((b) => b.id === blockId);
+              if (!targetBlock) return page;
+              const targetParentId = targetBlock.data?.parentId || null;
+              const nextBlocks = page.blocks
+                .filter((block) => block.id !== blockId)
+                .map((block) => {
+                  if (block.data?.parentId === blockId) {
+                    return {
+                      ...block,
+                      data: {
+                        ...block.data,
+                        parentId: targetParentId,
+                      },
+                    };
+                  }
+                  return block;
+                });
+              return { ...page, blocks: nextBlocks, updatedAt: Date.now() };
+            })
+          );
+        },
+        undo: () => {
+          setPages((prev) =>
+            prev.map((page) =>
+              page.id === pageId ? { ...page, blocks: prevBlocks, updatedAt: Date.now() } : page
+            )
+          );
+        },
+      });
+    }
+
     // If it was a child-page block, also trigger the subpage deletion to keep state clean.
     const activePg = pages.find((p) => p.id === pageId);
     if (activePg) {
@@ -584,43 +1117,71 @@ const getLastSubtreeBlockId = (targetId: string, blocks: Block[]): string => {
   };
 
   const reorderBlocks = (pageId: string, activeId: string, overId: string) => {
+    const pageToModify = pages.find((p) => p.id === pageId);
+    if (!pageToModify) return;
+
+    // Snapshot PREVIOUS block array before mutation (deep copy to guarantee immutability)
+    const prevBlocks: Block[] = JSON.parse(JSON.stringify(pageToModify.blocks));
+
+    const descendantIds = new Set(getDescendantIds(activeId, prevBlocks));
+    const subtreeIds = new Set([activeId, ...descendantIds]);
+
+    const subtreeBlocks: Block[] = [];
+    const remainingBlocks: Block[] = [];
+
+    for (const block of prevBlocks) {
+      if (subtreeIds.has(block.id)) {
+        subtreeBlocks.push(block);
+      } else {
+        remainingBlocks.push(block);
+      }
+    }
+
+    const overIndexInRemaining = remainingBlocks.findIndex((b) => b.id === overId);
+    if (overIndexInRemaining === -1) return;
+
+    const oldIndex = prevBlocks.findIndex((b) => b.id === activeId);
+    const overIndexInOriginal = prevBlocks.findIndex((b) => b.id === overId);
+
+    const insertIndex =
+      overIndexInOriginal > oldIndex ? overIndexInRemaining + 1 : overIndexInRemaining;
+
+    remainingBlocks.splice(insertIndex, 0, ...subtreeBlocks);
+    const newBlocks: Block[] = JSON.parse(JSON.stringify(remainingBlocks));
+
     setPages((prev) =>
       prev.map((page) => {
         if (page.id !== pageId) return page;
-
-        const descendantIds = new Set(getDescendantIds(activeId, page.blocks));
-        const subtreeIds = new Set([activeId, ...descendantIds]);
-
-        const subtreeBlocks: Block[] = [];
-        const remainingBlocks: Block[] = [];
-
-        for (const block of page.blocks) {
-          if (subtreeIds.has(block.id)) {
-            subtreeBlocks.push(block);
-          } else {
-            remainingBlocks.push(block);
-          }
-        }
-
-        const overIndexInRemaining = remainingBlocks.findIndex((b) => b.id === overId);
-        if (overIndexInRemaining === -1) return page;
-
-        const oldIndex = page.blocks.findIndex((b) => b.id === activeId);
-        const overIndexInOriginal = page.blocks.findIndex((b) => b.id === overId);
-
-        const insertIndex = overIndexInOriginal > oldIndex 
-          ? overIndexInRemaining + 1 
-          : overIndexInRemaining;
-
-        remainingBlocks.splice(insertIndex, 0, ...subtreeBlocks);
-
         return {
           ...page,
-          blocks: remainingBlocks,
+          blocks: newBlocks,
           updatedAt: Date.now(),
         };
       })
     );
+
+    if (!workspaceHistoryService.isExecutingUndoRedo()) {
+      workspaceHistoryService.registerCommand({
+        id: `reorder_blocks_${pageId}_${Date.now()}`,
+        description: "Reorder Blocks",
+        timestamp: Date.now(),
+        pageId: pageId,
+        execute: () => {
+          setPages((prev) =>
+            prev.map((page) =>
+              page.id === pageId ? { ...page, blocks: newBlocks, updatedAt: Date.now() } : page
+            )
+          );
+        },
+        undo: () => {
+          setPages((prev) =>
+            prev.map((page) =>
+              page.id === pageId ? { ...page, blocks: prevBlocks, updatedAt: Date.now() } : page
+            )
+          );
+        },
+      });
+    }
   };
 
   const duplicateBlock = (pageId: string, blockId: string): string | null => {
@@ -680,6 +1241,63 @@ const getLastSubtreeBlockId = (targetId: string, blocks: Block[]): string => {
         };
       })
     );
+
+    const createdIds = new Set(Array.from(idMap.values()));
+    if (!workspaceHistoryService.isExecutingUndoRedo()) {
+      workspaceHistoryService.registerCommand({
+        id: `duplicate_block_${newBlockId}_${Date.now()}`,
+        description: "Duplicate Block",
+        timestamp: Date.now(),
+        pageId: pageId,
+        execute: () => {
+          setPages((prev) =>
+            prev.map((p) => {
+              if (p.id !== pageId) return p;
+              if (p.blocks.some((b) => createdIds.has(b.id))) return p;
+              const idx = p.blocks.findIndex((b) => b.id === blockId);
+              if (idx === -1) return p;
+
+              const blocksToDuplicate: Block[] = [];
+              for (let i = idx; i < p.blocks.length; i++) {
+                const b = p.blocks[i];
+                if (b.id === blockId || descendantIds.has(b.id)) {
+                  blocksToDuplicate.push(b);
+                } else if (blocksToDuplicate.length > 0 && !b.data?.parentId) {
+                  break;
+                }
+              }
+
+              const duplicatedBlocks: Block[] = blocksToDuplicate.map((b) => {
+                const newId = idMap.get(b.id)!;
+                const newData = JSON.parse(JSON.stringify(b.data));
+                if (newData.parentId && idMap.has(newData.parentId)) {
+                  newData.parentId = idMap.get(newData.parentId);
+                }
+                return {
+                  id: newId,
+                  type: b.type,
+                  data: newData,
+                };
+              });
+
+              const newBlocks = [...p.blocks];
+              newBlocks.splice(idx + blocksToDuplicate.length, 0, ...duplicatedBlocks);
+
+              return { ...p, blocks: newBlocks, updatedAt: Date.now() };
+            })
+          );
+        },
+        undo: () => {
+          setPages((prev) =>
+            prev.map((p) =>
+              p.id === pageId
+                ? { ...p, blocks: p.blocks.filter((b) => !createdIds.has(b.id)), updatedAt: Date.now() }
+                : p
+            )
+          );
+        },
+      });
+    }
 
     return newBlockId;
   };
@@ -792,18 +1410,88 @@ const getLastSubtreeBlockId = (targetId: string, blocks: Block[]): string => {
       })
     );
 
+    const createdIds = new Set([newRootId, ...Array.from(idMap.values())]);
+    if (!workspaceHistoryService.isExecutingUndoRedo()) {
+      workspaceHistoryService.registerCommand({
+        id: `paste_block_${newRootId}_${Date.now()}`,
+        description: "Paste Block",
+        timestamp: Date.now(),
+        pageId: pageId,
+        execute: () => {
+          setPages((prev) =>
+            prev.map((page) => {
+              if (page.id !== pageId) return page;
+              if (page.blocks.some((b) => createdIds.has(b.id))) return page;
+
+              const targetBlock = page.blocks.find((b) => b.id === targetBlockId);
+              if (!targetBlock) return page;
+
+              const lastSubtreeId = getLastSubtreeBlockId(targetBlockId, page.blocks);
+              const targetIndex = page.blocks.findIndex((b) => b.id === lastSubtreeId);
+              if (targetIndex === -1) return page;
+
+              const duplicatedRootBlock: Block = {
+                id: newRootId,
+                type: blockClipboard.rootBlock.type,
+                data: {
+                  ...JSON.parse(JSON.stringify(blockClipboard.rootBlock.data)),
+                  parentId: targetBlock.data?.parentId || null,
+                },
+              };
+
+              const duplicatedChildBlocks: Block[] = blockClipboard.childBlocks.map((child) => {
+                const newChildId = idMap.get(child.id)!;
+                const newChildData = JSON.parse(JSON.stringify(child.data));
+                if (newChildData.parentId && idMap.has(newChildData.parentId)) {
+                  newChildData.parentId = idMap.get(newChildData.parentId);
+                }
+                return {
+                  id: newChildId,
+                  type: child.type,
+                  data: newChildData,
+                };
+              });
+
+              const newBlocks = [...page.blocks];
+              newBlocks.splice(targetIndex + 1, 0, duplicatedRootBlock, ...duplicatedChildBlocks);
+
+              return { ...page, blocks: newBlocks, updatedAt: Date.now() };
+            })
+          );
+        },
+        undo: () => {
+          setPages((prev) =>
+            prev.map((page) =>
+              page.id === pageId
+                ? { ...page, blocks: page.blocks.filter((b) => !createdIds.has(b.id)), updatedAt: Date.now() }
+                : page
+            )
+          );
+        },
+      });
+    }
+
     return newRootId;
   };
+
+  // Modal States
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [isTrashOpen, setIsTrashOpen] = useState(false);
+  const [isExportOpen, setIsExportOpen] = useState(false);
+  const [isTemplateModalOpen, setIsTemplateModalOpen] = useState(false);
 
   // Search State & Navigation Logic
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [highlightedBlockId, setHighlightedBlockId] = useState<string | null>(null);
   const [pendingSearchTarget, setPendingSearchTarget] = useState<SearchNavigationTarget | null>(null);
 
-  // Synchronize search index whenever active pages change
+  // Synchronize search index whenever active pages change (debounced for smooth typing performance)
   useEffect(() => {
-    const activePages = pages.filter((p) => !p.isDeleted);
-    searchService.buildIndex(activePages);
+    const timer = setTimeout(() => {
+      const activePages = pages.filter((p) => !p.isDeleted);
+      searchService.buildIndex(activePages);
+    }, 300);
+    return () => clearTimeout(timer);
   }, [pages]);
 
   // Ensure activePageId points to a non-deleted page
@@ -826,13 +1514,107 @@ const getLastSubtreeBlockId = (targetId: string, blocks: Block[]): string => {
     }
   }, [pages, activePageId]);
 
-  // Global Keyboard Shortcut: Ctrl+P / Cmd+P or Ctrl+K / Cmd+K
+  // Workspace History State Subscription
+  const [historyState, setHistoryState] = useState(() => workspaceHistoryService.getState());
+
+  useEffect(() => {
+    return workspaceHistoryService.subscribe((state) => {
+      setHistoryState(state);
+    });
+  }, []);
+
+  useEffect(() => {
+    workspaceHistoryService.setNavigateHandler((pageId: string) => {
+      setActivePageIdState((currentActiveId) => {
+        if (currentActiveId !== pageId) {
+          const targetPage = pagesRef.current.find((p) => p.id === pageId);
+          if (targetPage && !targetPage.isDeleted) {
+            setActivePageId(pageId, { skipFocus: true });
+          }
+        }
+        return currentActiveId;
+      });
+    });
+    return () => {
+      workspaceHistoryService.setNavigateHandler(null);
+    };
+  }, [setActivePageId]);
+
+  const undo = useCallback(() => {
+    return workspaceHistoryService.undo();
+  }, []);
+
+  const redo = useCallback(() => {
+    return workspaceHistoryService.redo();
+  }, []);
+
+  // Global Keyboard Shortcuts: Search (Ctrl+P / Ctrl+K), Undo (Ctrl+Z), Redo (Ctrl+Shift+Z / Ctrl+Y)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       const isCmdOrCtrl = e.metaKey || e.ctrlKey;
-      if (isCmdOrCtrl && (e.key.toLowerCase() === "p" || e.key.toLowerCase() === "k")) {
+      if (!isCmdOrCtrl) return;
+
+      const keyLower = e.key.toLowerCase();
+
+      if (keyLower === "p" || keyLower === "k") {
         e.preventDefault();
         setIsSearchOpen((prev) => !prev);
+        return;
+      }
+
+      if (keyLower === "z") {
+        if (e.defaultPrevented) return;
+
+        const active = document.activeElement;
+        const isBlockInput =
+          active &&
+          ((active.id && (active.id.startsWith("block-input-") || active.id.startsWith("table-cell-") || active.id === "editor-page-title")) ||
+            !!active.closest("[id^='editor-block-wrapper-']") ||
+            !!active.closest("#editor-scroll-container"));
+
+        const isNonBlockStandardInput =
+          active &&
+          !isBlockInput &&
+          (active.tagName === "INPUT" || active.tagName === "TEXTAREA" || active.tagName === "SELECT");
+
+        if (isNonBlockStandardInput) {
+          return;
+        }
+
+        if (e.shiftKey) {
+          if (workspaceHistoryService.canRedo()) {
+            e.preventDefault();
+            workspaceHistoryService.redo();
+          }
+        } else {
+          if (workspaceHistoryService.canUndo()) {
+            e.preventDefault();
+            workspaceHistoryService.undo();
+          }
+        }
+      } else if (keyLower === "y") {
+        if (e.defaultPrevented) return;
+
+        const active = document.activeElement;
+        const isBlockInput =
+          active &&
+          ((active.id && (active.id.startsWith("block-input-") || active.id.startsWith("table-cell-") || active.id === "editor-page-title")) ||
+            !!active.closest("[id^='editor-block-wrapper-']") ||
+            !!active.closest("#editor-scroll-container"));
+
+        const isNonBlockStandardInput =
+          active &&
+          !isBlockInput &&
+          (active.tagName === "INPUT" || active.tagName === "TEXTAREA" || active.tagName === "SELECT");
+
+        if (isNonBlockStandardInput) {
+          return;
+        }
+
+        if (workspaceHistoryService.canRedo()) {
+          e.preventDefault();
+          workspaceHistoryService.redo();
+        }
       }
     };
 
@@ -877,27 +1659,112 @@ const getLastSubtreeBlockId = (targetId: string, blocks: Block[]): string => {
   }, [pages]);
 
   const toggleFavorite = useCallback((pageId: string) => {
+    const pg = pages.find((p) => p.id === pageId);
+    const targetTitle = pg ? (pg.title || "Untitled") : "Page";
+    const wasFav = pg ? !!pg.isFavorite : false;
+    const willBeFav = !wasFav;
+
     setPages((prev) => favoritesService.toggleFavorite(prev, pageId));
-  }, []);
+
+    if (!workspaceHistoryService.isExecutingUndoRedo()) {
+      workspaceHistoryService.registerCommand({
+        id: `toggle_fav_${pageId}_${Date.now()}`,
+        description: "Toggle Favorite",
+        timestamp: Date.now(),
+        pageId: pageId,
+        execute: () => {
+          setPages((prev) => favoritesService.toggleFavorite(prev, pageId));
+          notificationService.info(
+            willBeFav ? "Added to Favorites" : "Removed from Favorites",
+            `"${targetTitle}"`
+          );
+        },
+        undo: () => {
+          setPages((prev) => favoritesService.toggleFavorite(prev, pageId));
+          notificationService.info(
+            wasFav ? "Added to Favorites" : "Removed from Favorites",
+            `"${targetTitle}"`
+          );
+        },
+      });
+    }
+
+    notificationService.info(
+      willBeFav ? "Added to Favorites" : "Removed from Favorites",
+      `"${targetTitle}"`
+    );
+  }, [pages]);
 
   const reorderFavorites = useCallback((draggedId: string, targetId: string) => {
+    const prevPagesState = pages;
     setPages((prev) => favoritesService.reorderFavorites(prev, draggedId, targetId));
-  }, []);
+
+    if (!workspaceHistoryService.isExecutingUndoRedo()) {
+      workspaceHistoryService.registerCommand({
+        id: `reorder_fav_${Date.now()}`,
+        description: "Change Favorite Order",
+        timestamp: Date.now(),
+        execute: () => {
+          setPages((prev) => favoritesService.reorderFavorites(prev, draggedId, targetId));
+        },
+        undo: () => {
+          setPages(prevPagesState);
+        },
+      });
+    }
+  }, [pages]);
 
   const trashPages = useMemo(() => {
     return trashService.getRootTrashPages(pages);
   }, [pages]);
 
   const restorePage = useCallback((pageId: string) => {
-    setPages((prev) => trashService.restorePage(prev, pageId));
-  }, []);
+    let targetTitle = "Page";
+    const prevPagesState = pages;
+    setPages((prev) => {
+      const pg = prev.find((p) => p.id === pageId);
+      if (pg) targetTitle = pg.title || "Untitled";
+      return trashService.restorePage(prev, pageId);
+    });
+
+    if (!workspaceHistoryService.isExecutingUndoRedo()) {
+      workspaceHistoryService.registerCommand({
+        id: `restore_page_${pageId}_${Date.now()}`,
+        description: "Restore Page",
+        timestamp: Date.now(),
+        execute: () => {
+          setPages((prev) => trashService.restorePage(prev, pageId));
+          setActivePageIdState(pageId);
+        },
+        undo: () => {
+          setPages(prevPagesState);
+        },
+      });
+    }
+
+    notificationService.success("Page restored", `"${targetTitle}" restored from Trash.`);
+  }, [pages]);
 
   const permanentlyDeletePage = useCallback((pageId: string) => {
+    let targetTitle = "Page";
+    const pg = pages.find((p) => p.id === pageId);
+    if (pg) targetTitle = pg.title || "Untitled";
+
     setPages((prev) => trashService.permanentlyDeletePage(prev, pageId));
-  }, []);
+
+    // Permanent deletion clears history stack so Ctrl+Z cannot restore permanently deleted items
+    workspaceHistoryService.clear();
+
+    notificationService.info("Page deleted permanently", `"${targetTitle}" deleted.`);
+  }, [pages]);
 
   const emptyTrash = useCallback(() => {
     setPages((prev) => trashService.emptyTrash(prev));
+
+    // Permanent trash clear invalidates undo stack
+    workspaceHistoryService.clear();
+
+    notificationService.info("Trash emptied", "All items permanently removed.");
   }, []);
 
   const activePage = pages.find((page) => page.id === activePageId && !page.isDeleted) || null;
@@ -916,9 +1783,10 @@ const getLastSubtreeBlockId = (targetId: string, blocks: Block[]): string => {
         activePageId,
         sidebarOpen,
       });
+      notificationService.success("Workspace exported", `Backup created for "${workspaceName}".`);
     } catch (err: any) {
       console.error("[AppContext] Export workspace failed:", err);
-      platform.dialogs.alert(err?.message || "Failed to export workspace backup.");
+      notificationService.error("Export failed", err?.message || "Failed to export workspace backup.");
     }
   }, [pages, activePageId, sidebarOpen]);
 
@@ -937,12 +1805,13 @@ const getLastSubtreeBlockId = (targetId: string, blocks: Block[]): string => {
       if (typeof snapshot.sidebarOpen === "boolean") {
         setSidebarOpen(snapshot.sidebarOpen);
       }
+      workspaceHistoryService.clear();
       persistenceService.saveWorkspace(snapshot);
-      platform.dialogs.alert("Workspace restored successfully!");
+      notificationService.success("Workspace restored", "Workspace backup restored successfully.");
       return true;
     } catch (err: any) {
       console.error("[AppContext] Import workspace failed:", err);
-      platform.dialogs.alert(err?.message || "Failed to import workspace backup archive.");
+      notificationService.error("Import failed", err?.message || "Failed to import workspace backup archive.");
       return false;
     }
   }, []);
@@ -995,10 +1864,11 @@ const getLastSubtreeBlockId = (targetId: string, blocks: Block[]): string => {
           }, 150);
         }
 
+        notificationService.success("Page imported", `Imported "${newPage.title}" successfully.`);
         return newId;
       } catch (err: any) {
         console.error("[AppContext] Import page failed:", err);
-        platform.dialogs.alert(err?.message || "Failed to import page file.");
+        notificationService.error("Import failed", err?.message || "Failed to import page file.");
         return null;
       }
     },
@@ -1038,6 +1908,7 @@ const getLastSubtreeBlockId = (targetId: string, blocks: Block[]): string => {
         deleteBlock,
         reorderBlocks,
         duplicateBlock,
+        duplicatePage,
         blockClipboard,
         setBlockClipboard,
         copyBlock,
@@ -1045,6 +1916,14 @@ const getLastSubtreeBlockId = (targetId: string, blocks: Block[]): string => {
         pasteBlock,
         isSearchOpen,
         setIsSearchOpen,
+        isSettingsOpen,
+        setIsSettingsOpen,
+        isTrashOpen,
+        setIsTrashOpen,
+        isExportOpen,
+        setIsExportOpen,
+        isTemplateModalOpen,
+        setIsTemplateModalOpen,
         highlightedBlockId,
         setHighlightedBlockId,
         pendingSearchTarget,
@@ -1053,6 +1932,10 @@ const getLastSubtreeBlockId = (targetId: string, blocks: Block[]): string => {
         exportWorkspace,
         importWorkspace,
         importPage,
+        canUndo: historyState.canUndo,
+        canRedo: historyState.canRedo,
+        undo,
+        redo,
       }}
     >
       {children}

@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   X,
   Search,
@@ -18,6 +18,7 @@ import {
   PREDEFINED_TEMPLATES
 } from "../templates/templateRegistry";
 import { useApp } from "../context/AppContext";
+import { notificationService } from "../services/NotificationService";
 
 interface TemplateGalleryModalProps {
   isOpen: boolean;
@@ -39,6 +40,18 @@ export const TemplateGalleryModal: React.FC<TemplateGalleryModalProps> = ({
     PREDEFINED_TEMPLATES[1] || PREDEFINED_TEMPLATES[0]
   );
 
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        onClose();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isOpen, onClose]);
+
   if (!isOpen) return null;
 
   const allTemplates = getTemplates();
@@ -57,8 +70,10 @@ export const TemplateGalleryModal: React.FC<TemplateGalleryModalProps> = ({
     if (targetPageId) {
       applyTemplateToPage(targetPageId, templateId);
       setActivePageId(targetPageId);
+      notificationService.success("Template Applied", `Applied "${selectedTemplate?.name || "Template"}"`);
     } else {
       createPageFromTemplate(templateId);
+      notificationService.success("Page Created from Template", `Created "${selectedTemplate?.name || "Template"}"`);
     }
     onClose();
   };
@@ -72,7 +87,12 @@ export const TemplateGalleryModal: React.FC<TemplateGalleryModalProps> = ({
   ];
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 bg-stone-900/40 dark:bg-stone-950/60 backdrop-blur-sm animate-fade-in">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 bg-stone-900/40 dark:bg-stone-950/60 backdrop-blur-sm animate-fade-in"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Template Gallery Modal"
+    >
       <div
         className="relative w-full max-w-4xl max-h-[85vh] flex flex-col bg-white dark:bg-[#1f1f1f] rounded-xl shadow-2xl border border-stone-200 dark:border-stone-800 overflow-hidden font-sans"
         onClick={(e) => e.stopPropagation()}
@@ -94,6 +114,7 @@ export const TemplateGalleryModal: React.FC<TemplateGalleryModalProps> = ({
           </div>
           <button
             onClick={onClose}
+            aria-label="Close template gallery modal"
             className="p-1.5 rounded-lg text-stone-400 dark:text-stone-500 hover:text-stone-700 dark:hover:text-stone-200 hover:bg-stone-200/60 dark:hover:bg-stone-800 transition-colors cursor-pointer"
           >
             <X className="h-5 w-5" />

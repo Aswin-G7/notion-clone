@@ -106,8 +106,7 @@ export class SQLiteService {
 
   public async switchDatabase(newDbPath: string, isNewWorkspace: boolean = false, workspaceName?: string): Promise<void> {
     this.isSaveLocked = true;
-    this.db = null;
-    this.isInitialized = false;
+    this.close();
     this.dbPath = newDbPath;
     await this.init(newDbPath);
 
@@ -216,9 +215,24 @@ export class SQLiteService {
 
       if (key === "notion_workspace_v1") {
         if (!row || typeof row.value !== "string") {
+          const reconstructed = this.reconstructFromRelationalTables();
+          if (reconstructed) {
+            return this.formatSnapshotForRenderer(reconstructed);
+          }
           const freshJson = this.initializeCleanWorkspace();
           return this.formatSnapshotForRenderer(freshJson);
         }
+
+        try {
+          JSON.parse(row.value);
+        } catch (jsonErr) {
+          console.error("[SQLiteService] kv_store JSON corruption detected, recovering from relational tables...", jsonErr);
+          const reconstructed = this.reconstructFromRelationalTables();
+          if (reconstructed) {
+            return this.formatSnapshotForRenderer(reconstructed);
+          }
+        }
+
         return this.formatSnapshotForRenderer(row.value);
       }
 
@@ -474,6 +488,84 @@ export class SQLiteService {
       try {
         this.db.exec("ROLLBACK;");
       } catch {}
+    }
+  }
+
+  /**
+   * Reconstructs a full WorkspaceSnapshot from structured relational tables (pages, blocks)
+   * if kv_store is empty or corrupted.
+   */
+  private reconstructFromRelationalTables(): string | null {
+    if (!this.db) return null;
+    try {
+      const pageRows = this.db.prepare("SELECT * FROM pages").all() as any[];
+      if (!pageRows || pageRows.length === 0) return null;
+
+      const blockRows = this.db.prepare("SELECT * FROM blocks").all() as any[];
+      const blocksByPageId = new Map<string, any[]>();
+
+      for (const row of blockRows) {
+        let blockData = {};
+        try {
+          blockData = JSON.parse(row.data || "{}");
+        } catch {}
+
+        const blockObj = {
+          id: row.id,
+          type: row.type || "paragraph",
+          data: blockData,
+          createdAt: row.created_at || Date.now(),
+        };
+
+        if (!blocksByPageId.has(row.page_id)) {
+          blocksByPageId.set(row.page_id, []);
+        }
+        blocksByPageId.get(row.page_id)!.push(blockObj);
+      }
+
+      const pages = pageRows.map((p) => {
+        let children: string[] = [];
+        try {
+          children = JSON.parse(p.children || "[]");
+        } catch {}
+
+        return {
+          id: p.id,
+          title: p.title || "",
+          icon: p.icon || null,
+          coverImage: p.cover_image || null,
+          parentId: p.parent_id || null,
+          children,
+          blocks: blocksByPageId.get(p.id) || [],
+          createdAt: p.created_at || Date.now(),
+          updatedAt: p.updated_at || Date.now(),
+          lastOpenedAt: p.last_opened_at || null,
+          isFavorite: Boolean(p.is_favorite),
+          favoriteOrder: p.favorite_order ?? undefined,
+          isDeleted: Boolean(p.is_deleted),
+          deletedAt: p.deleted_at || null,
+        };
+      });
+
+      const activePage = pages.find((p) => !p.isDeleted) || pages[0];
+      const snapshot = {
+        version: 1,
+        timestamp: Date.now(),
+        pages,
+        activePageId: activePage ? activePage.id : null,
+        sidebarOpen: true,
+      };
+
+      const jsonStr = JSON.stringify(snapshot);
+      const stmt = this.db.prepare(
+        "INSERT OR REPLACE INTO kv_store (key, value, updated_at) VALUES (?, ?, ?)"
+      );
+      stmt.run("notion_workspace_v1", jsonStr, Date.now());
+      console.log("[SQLiteService] Successfully reconstructed workspace from relational database tables!");
+      return jsonStr;
+    } catch (err) {
+      console.error("[SQLiteService] Relational reconstruction failed:", err);
+      return null;
     }
   }
 }

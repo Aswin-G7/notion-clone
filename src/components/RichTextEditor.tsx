@@ -27,7 +27,10 @@ import {
   COMMAND_PRIORITY_HIGH,
   COMMAND_PRIORITY_LOW,
   FOCUS_COMMAND,
+  UNDO_COMMAND,
+  REDO_COMMAND,
 } from "lexical";
+import { workspaceHistoryService } from "../services/WorkspaceHistoryService";
 
 // Helper to sanitize URLs by adding default https:// protocol if missing
 function sanitizeUrl(url: string): string {
@@ -262,9 +265,35 @@ function ShortcutsPlugin({ onKeyDown, onFocus }: ShortcutsPluginProps) {
       COMMAND_PRIORITY_HIGH
     );
 
+    // 3. Undo command fallback listener (runs if Lexical text history is empty)
+    const removeUndoListener = editor.registerCommand(
+      UNDO_COMMAND,
+      () => {
+        if (workspaceHistoryService.canUndo()) {
+          return workspaceHistoryService.undo();
+        }
+        return false;
+      },
+      COMMAND_PRIORITY_LOW
+    );
+
+    // 4. Redo command fallback listener (runs if Lexical text history is empty)
+    const removeRedoListener = editor.registerCommand(
+      REDO_COMMAND,
+      () => {
+        if (workspaceHistoryService.canRedo()) {
+          return workspaceHistoryService.redo();
+        }
+        return false;
+      },
+      COMMAND_PRIORITY_LOW
+    );
+
     return () => {
       removeFocusListener();
       removeKeyDownListener();
+      removeUndoListener();
+      removeRedoListener();
     };
   }, [editor, onKeyDown, onFocus]);
 

@@ -120,6 +120,11 @@ export function buildAndSetMenu() {
           click: () => sendMenuAction("file:export-workspace"),
         },
         {
+          label: "Import Page...",
+          accelerator: "CmdOrCtrl+I",
+          click: () => sendMenuAction("file:import-page"),
+        },
+        {
           label: "Import Workspace...",
           accelerator: "CmdOrCtrl+Shift+I",
           click: () => sendMenuAction("file:import-workspace"),

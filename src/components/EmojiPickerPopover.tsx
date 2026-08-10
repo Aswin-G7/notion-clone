@@ -54,7 +54,15 @@ export const EmojiPickerPopover: React.FC<EmojiPickerPopoverProps> = ({
 
   useEffect(() => {
     searchInputRef.current?.focus();
-  }, []);
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        onClose();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [onClose]);
 
   const filteredCategories = useMemo(() => {
     if (!search.trim()) {
@@ -82,14 +90,14 @@ export const EmojiPickerPopover: React.FC<EmojiPickerPopoverProps> = ({
   return (
     <div
       id="emoji-picker-popover"
-      className={`absolute z-50 mt-2 w-80 sm:w-88 bg-white border border-stone-200 rounded-xl shadow-xl overflow-hidden font-sans text-stone-800 ${
+      className={`absolute z-50 mt-2 w-80 sm:w-88 bg-white dark:bg-[#1f1f1f] border border-stone-200 dark:border-stone-800 rounded-xl shadow-xl dark:shadow-2xl overflow-hidden font-sans text-stone-800 dark:text-stone-100 ${
         align === "center" ? "left-1/2 -translate-x-1/2" : align === "right" ? "right-0" : "left-0"
       }`}
       onClick={(e) => e.stopPropagation()}
     >
       {/* Header Bar */}
-      <div className="p-3 border-b border-stone-150 bg-stone-50/80 flex items-center justify-between gap-2">
-        <div className="flex items-center gap-1.5 text-xs font-bold text-stone-700 uppercase tracking-wider">
+      <div className="p-3 border-b border-stone-150 dark:border-stone-800 bg-stone-50/80 dark:bg-[#191919] flex items-center justify-between gap-2">
+        <div className="flex items-center gap-1.5 text-xs font-bold text-stone-700 dark:text-stone-300 uppercase tracking-wider">
           <Smile className="h-4 w-4 text-amber-500 shrink-0" />
           <span>Select Icon</span>
         </div>
@@ -97,7 +105,7 @@ export const EmojiPickerPopover: React.FC<EmojiPickerPopoverProps> = ({
           <button
             type="button"
             onClick={handleRandom}
-            className="p-1 rounded text-stone-500 hover:text-stone-800 hover:bg-stone-200/60 transition-colors text-xs font-medium flex items-center gap-1 cursor-pointer"
+            className="p-1 rounded text-stone-500 dark:text-stone-400 hover:text-stone-800 dark:hover:text-stone-100 hover:bg-stone-200/60 dark:hover:bg-stone-800 transition-colors text-xs font-medium flex items-center gap-1 cursor-pointer"
             title="Random Emoji"
           >
             <Shuffle className="h-3.5 w-3.5" />
@@ -106,7 +114,7 @@ export const EmojiPickerPopover: React.FC<EmojiPickerPopoverProps> = ({
             <button
               type="button"
               onClick={onRemoveIcon}
-              className="px-2 py-1 rounded text-xs font-semibold text-red-600 hover:bg-red-50 hover:text-red-700 transition-colors flex items-center gap-1 cursor-pointer"
+              className="px-2 py-1 rounded text-xs font-semibold text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/40 hover:text-red-700 dark:hover:text-red-300 transition-colors flex items-center gap-1 cursor-pointer"
               title="Remove Icon"
             >
               <Trash2 className="h-3.5 w-3.5" />
@@ -116,7 +124,7 @@ export const EmojiPickerPopover: React.FC<EmojiPickerPopoverProps> = ({
           <button
             type="button"
             onClick={onClose}
-            className="p-1 text-stone-400 hover:text-stone-700 hover:bg-stone-200/60 rounded transition-colors cursor-pointer"
+            className="p-1 text-stone-400 dark:text-stone-500 hover:text-stone-700 dark:hover:text-stone-200 hover:bg-stone-200/60 dark:hover:bg-stone-800 rounded transition-colors cursor-pointer"
           >
             <X className="h-4 w-4" />
           </button>
@@ -124,20 +132,20 @@ export const EmojiPickerPopover: React.FC<EmojiPickerPopoverProps> = ({
       </div>
 
       {/* Search Input */}
-      <div className="p-2 border-b border-stone-150 bg-white flex items-center gap-2">
-        <Search className="h-3.5 w-3.5 text-stone-400 shrink-0 ml-1" />
+      <div className="p-2 border-b border-stone-150 dark:border-stone-800 bg-white dark:bg-[#1f1f1f] flex items-center gap-2">
+        <Search className="h-3.5 w-3.5 text-stone-400 dark:text-stone-500 shrink-0 ml-1" />
         <input
           ref={searchInputRef}
           type="text"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Filter icons or search category..."
-          className="w-full bg-transparent text-xs text-stone-800 placeholder-stone-400 outline-none"
+          className="w-full bg-transparent text-xs text-stone-800 dark:text-stone-100 placeholder-stone-400 dark:placeholder-stone-500 outline-none"
         />
         {search && (
           <button
             onClick={() => setSearch("")}
-            className="text-stone-400 hover:text-stone-600 p-0.5 cursor-pointer"
+            className="text-stone-400 dark:text-stone-500 hover:text-stone-600 dark:hover:text-stone-300 p-0.5 cursor-pointer"
           >
             <X className="h-3 w-3" />
           </button>
@@ -146,13 +154,13 @@ export const EmojiPickerPopover: React.FC<EmojiPickerPopoverProps> = ({
 
       {/* Category Tabs */}
       {!search && (
-        <div className="flex items-center gap-1 p-1.5 border-b border-stone-100 bg-stone-50/50 overflow-x-auto no-scrollbar text-[11px] font-medium text-stone-500">
+        <div className="flex items-center gap-1 p-1.5 border-b border-stone-100 dark:border-stone-800 bg-stone-50/50 dark:bg-stone-900/40 overflow-x-auto no-scrollbar text-[11px] font-medium text-stone-500 dark:text-stone-400">
           <button
             onClick={() => setActiveCategory("All")}
             className={`px-2 py-0.5 rounded-md whitespace-nowrap transition-colors cursor-pointer ${
               activeCategory === "All"
-                ? "bg-white text-stone-900 font-bold shadow-2xs border border-stone-200/60"
-                : "hover:text-stone-800 hover:bg-stone-200/40"
+                ? "bg-white dark:bg-stone-800 text-stone-900 dark:text-stone-100 font-bold shadow-2xs border border-stone-200/60 dark:border-stone-700"
+                : "hover:text-stone-800 dark:hover:text-stone-200 hover:bg-stone-200/40 dark:hover:bg-stone-800/50"
             }`}
           >
             All
@@ -163,8 +171,8 @@ export const EmojiPickerPopover: React.FC<EmojiPickerPopoverProps> = ({
               onClick={() => setActiveCategory(cat.name)}
               className={`px-2 py-0.5 rounded-md whitespace-nowrap transition-colors cursor-pointer ${
                 activeCategory === cat.name
-                  ? "bg-white text-stone-900 font-bold shadow-2xs border border-stone-200/60"
-                  : "hover:text-stone-800 hover:bg-stone-200/40"
+                  ? "bg-white dark:bg-stone-800 text-stone-900 dark:text-stone-100 font-bold shadow-2xs border border-stone-200/60 dark:border-stone-700"
+                  : "hover:text-stone-800 dark:hover:text-stone-200 hover:bg-stone-200/40 dark:hover:bg-stone-800/50"
               }`}
             >
               {cat.name}
@@ -176,13 +184,13 @@ export const EmojiPickerPopover: React.FC<EmojiPickerPopoverProps> = ({
       {/* Emoji Scroll Area */}
       <div className="p-2 max-h-56 overflow-y-auto space-y-3 font-sans">
         {filteredCategories.length === 0 ? (
-          <div className="py-8 text-center text-xs text-stone-400">
+          <div className="py-8 text-center text-xs text-stone-400 dark:text-stone-500">
             No matching icons found.
           </div>
         ) : (
           filteredCategories.map((cat) => (
             <div key={cat.name} className="space-y-1">
-              <div className="px-1 text-[10px] font-bold text-stone-400 uppercase tracking-wider">
+              <div className="px-1 text-[10px] font-bold text-stone-400 dark:text-stone-500 uppercase tracking-wider">
                 {cat.name}
               </div>
               <div className="grid grid-cols-8 gap-1">
@@ -191,8 +199,8 @@ export const EmojiPickerPopover: React.FC<EmojiPickerPopoverProps> = ({
                     key={`${cat.name}-${emoji}`}
                     type="button"
                     onClick={() => onSelectEmoji(emoji)}
-                    className={`text-xl h-8 w-8 flex items-center justify-center rounded-lg hover:bg-stone-100 hover:scale-110 active:scale-95 transition-all cursor-pointer ${
-                      currentIcon === emoji ? "bg-amber-100 ring-1 ring-amber-400" : ""
+                    className={`text-xl h-8 w-8 flex items-center justify-center rounded-lg hover:bg-stone-100 dark:hover:bg-stone-800 hover:scale-110 active:scale-95 transition-all cursor-pointer ${
+                      currentIcon === emoji ? "bg-amber-100 dark:bg-amber-950/60 ring-1 ring-amber-400 dark:ring-amber-600" : ""
                     }`}
                   >
                     {emoji}

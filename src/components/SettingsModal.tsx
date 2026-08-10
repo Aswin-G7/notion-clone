@@ -21,6 +21,7 @@ import {
   Laptop,
 } from "lucide-react";
 import { useSettings } from "../hooks/useSettings";
+import { notificationService } from "../services/NotificationService";
 import { platform, WorkspaceInfo } from "../platform";
 import { ThemeMode, LineWidthOption, TabWidth } from "../types/settings";
 
@@ -47,38 +48,58 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
     }
   }, [isOpen]);
 
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        onClose();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isOpen, onClose]);
+
   if (!isOpen) return null;
 
   const handleSetTheme = (theme: ThemeMode) => {
     updateSettings({ appearance: { theme } });
+    notificationService.info("Theme Updated", `Switched to ${theme} theme.`);
   };
 
   const handleSetFontSize = (fontSize: number) => {
     updateSettings({ editor: { fontSize } });
+    notificationService.info("Font Size Updated", `${fontSize}px`);
   };
 
   const handleSetLineWidth = (lineWidth: LineWidthOption) => {
     updateSettings({ editor: { lineWidth } });
+    notificationService.info("Line Width Updated", `Layout line width set to ${lineWidth}`);
   };
 
   const handleSetSpellCheck = (spellCheck: boolean) => {
     updateSettings({ editor: { spellCheck } });
+    notificationService.info("Spell Check Updated", spellCheck ? "Enabled" : "Disabled");
   };
 
   const handleSetTabWidth = (tabWidth: TabWidth) => {
     updateSettings({ editor: { tabWidth } });
+    notificationService.info("Tab Width Updated", `${tabWidth} spaces`);
   };
 
   const handleSetOpenLast = (openLastWorkspaceAtStartup: boolean) => {
     updateSettings({ workspace: { openLastWorkspaceAtStartup } });
+    notificationService.info("Startup Preference Saved");
   };
 
   const handleSetAutosaveDelay = (autosaveDelayMs: number) => {
     updateSettings({ workspace: { autosaveDelayMs } });
+    notificationService.info("Autosave Delay Updated", `${autosaveDelayMs}ms`);
   };
 
   const handleSetAutoBackups = (autoBackups: boolean) => {
     updateSettings({ workspace: { autoBackups } });
+    notificationService.info("Auto Backups Updated", autoBackups ? "Enabled" : "Disabled");
   };
 
   const handlePickDefaultWorkspace = async () => {
@@ -86,12 +107,14 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
     const selected = await platform.workspace.selectFolder();
     if (selected) {
       updateSettings({ workspace: { defaultWorkspacePath: selected } });
+      notificationService.success("Default Workspace Set", selected);
     }
   };
 
   const handleReset = async () => {
     await resetSettings();
     setResetConfirmOpen(false);
+    notificationService.info("Settings Reset", "Restored default configuration.");
   };
 
   return (
@@ -99,6 +122,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
       id="settings-modal-backdrop"
       className="fixed inset-0 z-50 bg-stone-900/40 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-150"
       onClick={onClose}
+      role="dialog"
+      aria-modal="true"
+      aria-label="Settings Modal"
     >
       <div
         id="settings-modal-container"
@@ -124,6 +150,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
             id="settings-modal-close-btn"
             type="button"
             onClick={onClose}
+            aria-label="Close settings modal"
             className="p-1.5 text-stone-400 hover:text-stone-700 dark:hover:text-stone-200 hover:bg-stone-100 dark:hover:bg-stone-800 rounded-lg transition-colors cursor-pointer"
           >
             <X className="h-4 w-4" />

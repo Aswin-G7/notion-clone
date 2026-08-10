@@ -422,17 +422,36 @@ function setupAssetProtocol() {
       return new Response("No active workspace", { status: 404 });
     }
 
-    const relativeUrl = request.url.replace(/^app-asset:\/\//, "");
-    const relativeClean = relativeUrl.startsWith("assets/")
-      ? relativeUrl
-      : path.join("assets", relativeUrl);
+    const allowedAssetsDir = path.resolve(activePath, "assets");
 
-    const fullFilePath = path.join(activePath, relativeClean);
     try {
-      return await net.fetch(pathToFileURL(fullFilePath).toString());
+      // Decode URL and strip scheme
+      const rawUrl = request.url.replace(/^app-asset:\/\//, "");
+      const decodedUrl = decodeURIComponent(rawUrl);
+
+      // Strip leading assets/ or / if present
+      const cleanRelative = decodedUrl.replace(/^(assets[\/\\]?|\/)/i, "");
+
+      // Resolve absolute file path
+      const targetFilePath = path.resolve(allowedAssetsDir, cleanRelative);
+
+      // Enforce path traversal security: target file MUST reside within allowedAssetsDir
+      const relativePath = path.relative(allowedAssetsDir, targetFilePath);
+      const isOutsideDir = relativePath.startsWith("..") || path.isAbsolute(relativePath);
+
+      if (isOutsideDir) {
+        console.warn("[app-asset] Path traversal blocked:", request.url, "->", targetFilePath);
+        return new Response("Forbidden: Access outside workspace assets directory is denied", { status: 403 });
+      }
+
+      if (!existsSync.existsSync(targetFilePath)) {
+        return new Response("Asset file not found", { status: 404 });
+      }
+
+      return await net.fetch(pathToFileURL(targetFilePath).toString());
     } catch (err) {
-      console.error("[app-asset] Error serving asset file:", fullFilePath, err);
-      return new Response("Asset file not found", { status: 404 });
+      console.error("[app-asset] Error serving asset file:", request.url, err);
+      return new Response("Asset file error", { status: 500 });
     }
   });
 }
@@ -457,6 +476,11 @@ app.whenReady().then(async () => {
       createWindow();
     }
   });
+});
+
+app.on("before-quit", () => {
+  workspaceManager.createBackup();
+  sqliteService.close();
 });
 
 app.on("window-all-closed", () => {

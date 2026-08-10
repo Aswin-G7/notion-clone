@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { useApp } from "../context/AppContext";
 import { useSettings } from "../hooks/useSettings";
 import { platform } from "../platform";
+import { isUserEditingText } from "../utils/dom";
 import { SettingsModal } from "./SettingsModal";
 import { ExportModal } from "./ExportModal";
 
@@ -12,6 +13,8 @@ export const NativeMenuListener: React.FC = () => {
     sidebarOpen,
     favoritePages,
     recentPages,
+    undo,
+    redo,
     createPage,
     importWorkspace,
     importPage,
@@ -19,13 +22,12 @@ export const NativeMenuListener: React.FC = () => {
     deleteBlock,
     setSidebarOpen,
     setIsSearchOpen,
+    setIsSettingsOpen,
+    setIsExportOpen,
     setActivePageId,
   } = useApp();
 
   const { settings, updateSettings } = useSettings();
-  const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
-  const [isExportModalOpen, setIsExportModalOpen] = useState(false);
-  const [exportScope, setExportScope] = useState<"page" | "workspace">("page");
 
   // Synchronize state with Electron's Native Menu
   useEffect(() => {
@@ -88,13 +90,8 @@ export const NativeMenuListener: React.FC = () => {
           break;
 
         case "file:export-page":
-          setExportScope("page");
-          setIsExportModalOpen(true);
-          break;
-
         case "file:export-workspace":
-          setExportScope("workspace");
-          setIsExportModalOpen(true);
+          setIsExportOpen(true);
           break;
 
         case "file:import-page": {
@@ -109,15 +106,23 @@ export const NativeMenuListener: React.FC = () => {
 
         case "file:settings":
         case "help:about":
-          setIsSettingsModalOpen(true);
+          setIsSettingsOpen(true);
           break;
 
         case "edit:undo":
-          document.execCommand("undo");
+          if (isUserEditingText()) {
+            document.execCommand("undo");
+          } else {
+            undo();
+          }
           break;
 
         case "edit:redo":
-          document.execCommand("redo");
+          if (isUserEditingText()) {
+            document.execCommand("redo");
+          } else {
+            redo();
+          }
           break;
 
         case "edit:duplicate-block":
@@ -175,17 +180,5 @@ export const NativeMenuListener: React.FC = () => {
     setActivePageId,
   ]);
 
-  return (
-    <>
-      <SettingsModal
-        isOpen={isSettingsModalOpen}
-        onClose={() => setIsSettingsModalOpen(false)}
-      />
-      <ExportModal
-        isOpen={isExportModalOpen}
-        onClose={() => setIsExportModalOpen(false)}
-        defaultScope={exportScope}
-      />
-    </>
-  );
+  return null;
 };

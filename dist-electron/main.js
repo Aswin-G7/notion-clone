@@ -108,8 +108,7 @@ var SQLiteService = class {
   }
   async switchDatabase(newDbPath, isNewWorkspace = false, workspaceName) {
     this.isSaveLocked = true;
-    this.db = null;
-    this.isInitialized = false;
+    this.close();
     this.dbPath = newDbPath;
     await this.init(newDbPath);
     if (isNewWorkspace) {
@@ -210,8 +209,21 @@ var SQLiteService = class {
       const row = stmt.get(key);
       if (key === "notion_workspace_v1") {
         if (!row || typeof row.value !== "string") {
+          const reconstructed = this.reconstructFromRelationalTables();
+          if (reconstructed) {
+            return this.formatSnapshotForRenderer(reconstructed);
+          }
           const freshJson = this.initializeCleanWorkspace();
           return this.formatSnapshotForRenderer(freshJson);
+        }
+        try {
+          JSON.parse(row.value);
+        } catch (jsonErr) {
+          console.error("[SQLiteService] kv_store JSON corruption detected, recovering from relational tables...", jsonErr);
+          const reconstructed = this.reconstructFromRelationalTables();
+          if (reconstructed) {
+            return this.formatSnapshotForRenderer(reconstructed);
+          }
         }
         return this.formatSnapshotForRenderer(row.value);
       }
@@ -439,6 +451,77 @@ var SQLiteService = class {
         this.db.exec("ROLLBACK;");
       } catch {
       }
+    }
+  }
+  /**
+   * Reconstructs a full WorkspaceSnapshot from structured relational tables (pages, blocks)
+   * if kv_store is empty or corrupted.
+   */
+  reconstructFromRelationalTables() {
+    if (!this.db) return null;
+    try {
+      const pageRows = this.db.prepare("SELECT * FROM pages").all();
+      if (!pageRows || pageRows.length === 0) return null;
+      const blockRows = this.db.prepare("SELECT * FROM blocks").all();
+      const blocksByPageId = /* @__PURE__ */ new Map();
+      for (const row of blockRows) {
+        let blockData = {};
+        try {
+          blockData = JSON.parse(row.data || "{}");
+        } catch {
+        }
+        const blockObj = {
+          id: row.id,
+          type: row.type || "paragraph",
+          data: blockData,
+          createdAt: row.created_at || Date.now()
+        };
+        if (!blocksByPageId.has(row.page_id)) {
+          blocksByPageId.set(row.page_id, []);
+        }
+        blocksByPageId.get(row.page_id).push(blockObj);
+      }
+      const pages = pageRows.map((p) => {
+        let children = [];
+        try {
+          children = JSON.parse(p.children || "[]");
+        } catch {
+        }
+        return {
+          id: p.id,
+          title: p.title || "",
+          icon: p.icon || null,
+          coverImage: p.cover_image || null,
+          parentId: p.parent_id || null,
+          children,
+          blocks: blocksByPageId.get(p.id) || [],
+          createdAt: p.created_at || Date.now(),
+          updatedAt: p.updated_at || Date.now(),
+          lastOpenedAt: p.last_opened_at || null,
+          isFavorite: Boolean(p.is_favorite),
+          favoriteOrder: p.favorite_order ?? void 0,
+          isDeleted: Boolean(p.is_deleted),
+          deletedAt: p.deleted_at || null
+        };
+      });
+      const activePage = pages.find((p) => !p.isDeleted) || pages[0];
+      const snapshot = {
+        version: 1,
+        timestamp: Date.now(),
+        pages,
+        activePageId: activePage ? activePage.id : null,
+        sidebarOpen: true
+      };
+      const jsonStr = JSON.stringify(snapshot);
+      const stmt = this.db.prepare(
+        "INSERT OR REPLACE INTO kv_store (key, value, updated_at) VALUES (?, ?, ?)"
+      );
+      stmt.run("notion_workspace_v1", jsonStr, Date.now());
+      console.log("[SQLiteService] Successfully reconstructed workspace from relational database tables!");
+      return jsonStr;
+    } catch (err) {
+      console.error("[SQLiteService] Relational reconstruction failed:", err);
+      return null;
     }
   }
 };
@@ -757,6 +840,11 @@ function buildAndSetMenu() {
           label: "Export Workspace...",
           accelerator: "CmdOrCtrl+Shift+E",
           click: () => sendMenuAction("file:export-workspace")
+        },
+        {
+          label: "Import Page...",
+          accelerator: "CmdOrCtrl+I",
+          click: () => sendMenuAction("file:import-page")
         },
         {
           label: "Import Workspace...",
@@ -1263,14 +1351,25 @@ function setupAssetProtocol() {
     if (!activePath) {
       return new Response("No active workspace", { status: 404 });
     }
-    const relativeUrl = request.url.replace(/^app-asset:\/\//, "");
-    const relativeClean = relativeUrl.startsWith("assets/") ? relativeUrl : path3.join("assets", relativeUrl);
-    const fullFilePath = path3.join(activePath, relativeClean);
+    const allowedAssetsDir = path3.resolve(activePath, "assets");
     try {
-      return await net.fetch(pathToFileURL(fullFilePath).toString());
+      const rawUrl = request.url.replace(/^app-asset:\/\//, "");
+      const decodedUrl = decodeURIComponent(rawUrl);
+      const cleanRelative = decodedUrl.replace(/^(assets[\/\\]?|\/)/i, "");
+      const targetFilePath = path3.resolve(allowedAssetsDir, cleanRelative);
+      const relativePath = path3.relative(allowedAssetsDir, targetFilePath);
+      const isOutsideDir = relativePath.startsWith("..") || path3.isAbsolute(relativePath);
+      if (isOutsideDir) {
+        console.warn("[app-asset] Path traversal blocked:", request.url, "->", targetFilePath);
+        return new Response("Forbidden: Access outside workspace assets directory is denied", { status: 403 });
+      }
+      if (!existsSync.existsSync(targetFilePath)) {
+        return new Response("Asset file not found", { status: 404 });
+      }
+      return await net.fetch(pathToFileURL(targetFilePath).toString());
     } catch (err) {
-      console.error("[app-asset] Error serving asset file:", fullFilePath, err);
-      return new Response("Asset file not found", { status: 404 });
+      console.error("[app-asset] Error serving asset file:", request.url, err);
+      return new Response("Asset file error", { status: 500 });
     }
   });
 }
@@ -1291,6 +1390,10 @@ app4.whenReady().then(async () => {
       createWindow();
     }
   });
+});
+app4.on("before-quit", () => {
+  workspaceManager.createBackup();
+  sqliteService.close();
 });
 app4.on("window-all-closed", () => {
   workspaceManager.createBackup();

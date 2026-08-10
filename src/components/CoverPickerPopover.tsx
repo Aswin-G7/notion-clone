@@ -58,6 +58,17 @@ export const CoverPickerPopover: React.FC<CoverPickerPopoverProps> = ({
   const [isUploading, setIsUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  React.useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        onClose();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [onClose]);
+
   const handleUrlSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     const trimmed = customUrl.trim();
@@ -98,15 +109,15 @@ export const CoverPickerPopover: React.FC<CoverPickerPopoverProps> = ({
   return (
     <div
       id="cover-picker-popover"
-      className={`absolute z-50 mt-2 w-80 sm:w-96 bg-white border border-stone-200 rounded-xl shadow-xl overflow-hidden font-sans text-stone-800 ${
+      className={`absolute z-50 mt-2 w-80 sm:w-96 bg-white dark:bg-[#1f1f1f] border border-stone-200 dark:border-stone-800 rounded-xl shadow-xl dark:shadow-2xl overflow-hidden font-sans text-stone-800 dark:text-stone-100 ${
         align === "center" ? "left-1/2 -translate-x-1/2" : align === "right" ? "right-0" : "left-0"
       }`}
       onClick={(e) => e.stopPropagation()}
     >
       {/* Header Bar */}
-      <div className="p-3 border-b border-stone-150 bg-stone-50/80 flex items-center justify-between gap-2">
-        <div className="flex items-center gap-1.5 text-xs font-bold text-stone-700 uppercase tracking-wider">
-          <ImageIcon className="h-4 w-4 text-stone-600 shrink-0" />
+      <div className="p-3 border-b border-stone-150 dark:border-stone-800 bg-stone-50/80 dark:bg-[#191919] flex items-center justify-between gap-2">
+        <div className="flex items-center gap-1.5 text-xs font-bold text-stone-700 dark:text-stone-300 uppercase tracking-wider">
+          <ImageIcon className="h-4 w-4 text-stone-600 dark:text-stone-400 shrink-0" />
           <span>Change Cover</span>
         </div>
         <div className="flex items-center gap-1">
@@ -114,7 +125,7 @@ export const CoverPickerPopover: React.FC<CoverPickerPopoverProps> = ({
             <button
               type="button"
               onClick={onRemoveCover}
-              className="px-2 py-1 rounded text-xs font-semibold text-red-600 hover:bg-red-50 hover:text-red-700 transition-colors flex items-center gap-1 cursor-pointer"
+              className="px-2 py-1 rounded text-xs font-semibold text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/40 hover:text-red-700 dark:hover:text-red-300 transition-colors flex items-center gap-1 cursor-pointer"
             >
               <Trash2 className="h-3.5 w-3.5" />
               <span>Remove</span>
@@ -123,7 +134,7 @@ export const CoverPickerPopover: React.FC<CoverPickerPopoverProps> = ({
           <button
             type="button"
             onClick={onClose}
-            className="p-1 text-stone-400 hover:text-stone-700 hover:bg-stone-200/60 rounded transition-colors cursor-pointer"
+            className="p-1 text-stone-400 dark:text-stone-500 hover:text-stone-700 dark:hover:text-stone-200 hover:bg-stone-200/60 dark:hover:bg-stone-800 rounded transition-colors cursor-pointer"
           >
             <X className="h-4 w-4" />
           </button>
@@ -131,13 +142,13 @@ export const CoverPickerPopover: React.FC<CoverPickerPopoverProps> = ({
       </div>
 
       {/* Tabs Row */}
-      <div className="flex items-center border-b border-stone-150 bg-white text-xs font-medium text-stone-500">
+      <div className="flex items-center border-b border-stone-150 dark:border-stone-800 bg-white dark:bg-[#1f1f1f] text-xs font-medium text-stone-500 dark:text-stone-400">
         <button
           onClick={() => setActiveTab("gallery")}
           className={`flex-1 py-2 text-center border-b-2 transition-colors cursor-pointer ${
             activeTab === "gallery"
-              ? "border-stone-900 text-stone-900 font-bold"
-              : "border-transparent hover:text-stone-800"
+              ? "border-stone-900 dark:border-stone-100 text-stone-900 dark:text-stone-100 font-bold"
+              : "border-transparent hover:text-stone-800 dark:hover:text-stone-200"
           }`}
         >
           Gallery
@@ -146,8 +157,8 @@ export const CoverPickerPopover: React.FC<CoverPickerPopoverProps> = ({
           onClick={() => setActiveTab("upload")}
           className={`flex-1 py-2 text-center border-b-2 transition-colors cursor-pointer ${
             activeTab === "upload"
-              ? "border-stone-900 text-stone-900 font-bold"
-              : "border-transparent hover:text-stone-800"
+              ? "border-stone-900 dark:border-stone-100 text-stone-900 dark:text-stone-100 font-bold"
+              : "border-transparent hover:text-stone-800 dark:hover:text-stone-200"
           }`}
         >
           Upload
@@ -156,8 +167,8 @@ export const CoverPickerPopover: React.FC<CoverPickerPopoverProps> = ({
           onClick={() => setActiveTab("link")}
           className={`flex-1 py-2 text-center border-b-2 transition-colors cursor-pointer ${
             activeTab === "link"
-              ? "border-stone-900 text-stone-900 font-bold"
-              : "border-transparent hover:text-stone-800"
+              ? "border-stone-900 dark:border-stone-100 text-stone-900 dark:text-stone-100 font-bold"
+              : "border-transparent hover:text-stone-800 dark:hover:text-stone-200"
           }`}
         >
           Link / URL
@@ -168,7 +179,7 @@ export const CoverPickerPopover: React.FC<CoverPickerPopoverProps> = ({
       <div className="p-3">
         {activeTab === "gallery" && (
           <div className="space-y-2">
-            <div className="text-[11px] font-bold text-stone-400 uppercase tracking-wider">
+            <div className="text-[11px] font-bold text-stone-400 dark:text-stone-500 uppercase tracking-wider">
               Presets & Fine Art
             </div>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 max-h-56 overflow-y-auto p-1">
@@ -180,7 +191,7 @@ export const CoverPickerPopover: React.FC<CoverPickerPopoverProps> = ({
                     type="button"
                     onClick={() => onSelectCover(preset.url)}
                     className={`relative h-16 w-full rounded-lg overflow-hidden border-2 transition-all cursor-pointer group/item ${
-                      isSelected ? "border-stone-900 ring-2 ring-stone-900/20" : "border-stone-200 hover:border-stone-400"
+                      isSelected ? "border-stone-900 dark:border-stone-100 ring-2 ring-stone-900/20 dark:ring-stone-100/20" : "border-stone-200 dark:border-stone-700 hover:border-stone-400 dark:hover:border-stone-500"
                     }`}
                   >
                     <img
@@ -203,7 +214,7 @@ export const CoverPickerPopover: React.FC<CoverPickerPopoverProps> = ({
 
         {activeTab === "upload" && (
           <div className="space-y-3 py-2">
-            <div className="text-xs text-stone-500 text-center">
+            <div className="text-xs text-stone-500 dark:text-stone-400 text-center">
               Choose an image from your computer to use as the page cover.
             </div>
             <input
@@ -215,16 +226,16 @@ export const CoverPickerPopover: React.FC<CoverPickerPopoverProps> = ({
             />
             <div
               onClick={() => fileInputRef.current?.click()}
-              className="border-2 border-dashed border-stone-200 hover:border-stone-400 rounded-xl p-6 text-center cursor-pointer bg-stone-50/50 hover:bg-stone-50 transition-all flex flex-col items-center justify-center gap-2 group"
+              className="border-2 border-dashed border-stone-200 dark:border-stone-700 hover:border-stone-400 dark:hover:border-stone-500 rounded-xl p-6 text-center cursor-pointer bg-stone-50/50 dark:bg-stone-800/40 hover:bg-stone-50 dark:hover:bg-stone-800/80 transition-all flex flex-col items-center justify-center gap-2 group"
             >
-              <div className="w-10 h-10 rounded-full bg-white border border-stone-200 flex items-center justify-center shadow-2xs group-hover:scale-110 transition-transform">
-                <Upload className="h-5 w-5 text-stone-600" />
+              <div className="w-10 h-10 rounded-full bg-white dark:bg-stone-800 border border-stone-200 dark:border-stone-700 flex items-center justify-center shadow-2xs group-hover:scale-110 transition-transform">
+                <Upload className="h-5 w-5 text-stone-600 dark:text-stone-300" />
               </div>
               <div>
-                <span className="text-xs font-semibold text-stone-700 block">
+                <span className="text-xs font-semibold text-stone-700 dark:text-stone-200 block">
                   {isUploading ? "Uploading image..." : "Click to select local image"}
                 </span>
-                <span className="text-[11px] text-stone-400">PNG, JPG, WEBP or GIF</span>
+                <span className="text-[11px] text-stone-400 dark:text-stone-500">PNG, JPG, WEBP or GIF</span>
               </div>
             </div>
           </div>
@@ -233,11 +244,11 @@ export const CoverPickerPopover: React.FC<CoverPickerPopoverProps> = ({
         {activeTab === "link" && (
           <form onSubmit={handleUrlSubmit} className="space-y-3 py-2">
             <div className="space-y-1">
-              <label className="text-xs font-semibold text-stone-600 block">
+              <label className="text-xs font-semibold text-stone-600 dark:text-stone-300 block">
                 Paste Image URL
               </label>
-              <div className="flex items-center gap-2 border border-stone-200 rounded-lg p-2 bg-stone-50/50 focus-within:bg-white focus-within:border-stone-400 focus-within:ring-1 focus-within:ring-stone-400 transition-all">
-                <LinkIcon className="h-4 w-4 text-stone-400 shrink-0" />
+              <div className="flex items-center gap-2 border border-stone-200 dark:border-stone-700 rounded-lg p-2 bg-stone-50/50 dark:bg-stone-800/50 focus-within:bg-white dark:focus-within:bg-[#191919] focus-within:border-stone-400 dark:focus-within:border-stone-500 transition-all">
+                <LinkIcon className="h-4 w-4 text-stone-400 dark:text-stone-500 shrink-0" />
                 <input
                   type="url"
                   value={customUrl}
@@ -246,14 +257,14 @@ export const CoverPickerPopover: React.FC<CoverPickerPopoverProps> = ({
                     setUrlError("");
                   }}
                   placeholder="https://images.unsplash.com/..."
-                  className="w-full bg-transparent text-xs text-stone-800 outline-none"
+                  className="w-full bg-transparent text-xs text-stone-800 dark:text-stone-100 placeholder-stone-400 dark:placeholder-stone-500 outline-none"
                 />
               </div>
-              {urlError && <p className="text-[11px] text-red-500">{urlError}</p>}
+              {urlError && <p className="text-[11px] text-red-500 dark:text-red-400">{urlError}</p>}
             </div>
             <button
               type="submit"
-              className="w-full py-2 bg-stone-900 hover:bg-stone-800 text-white text-xs font-semibold rounded-lg transition-colors cursor-pointer"
+              className="w-full py-2 bg-stone-900 dark:bg-stone-100 hover:bg-stone-800 dark:hover:bg-stone-200 text-white dark:text-stone-900 text-xs font-semibold rounded-lg transition-colors cursor-pointer"
             >
               Submit Cover URL
             </button>

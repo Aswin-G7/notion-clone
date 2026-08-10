@@ -324,7 +324,7 @@ export const EditorArea: React.FC = () => {
     const isPageChanged = lastFocusedPageIdRef.current !== activePage.id;
     const isTokenTriggered = lastFocusTokenRef.current !== focusToken;
 
-    if (isPageChanged || isTokenTriggered) {
+    if (isTokenTriggered) {
       lastFocusedPageIdRef.current = activePage.id;
       lastFocusTokenRef.current = focusToken;
 
@@ -334,6 +334,9 @@ export const EditorArea: React.FC = () => {
       }
 
       focusFirstEditableBlock(activePage);
+    } else if (isPageChanged) {
+      lastFocusedPageIdRef.current = activePage.id;
+      lastFocusTokenRef.current = focusToken;
     }
   }, [activePage, focusToken, focusFirstEditableBlock, pendingSearchTarget]);
 
@@ -1106,7 +1109,7 @@ export const EditorArea: React.FC = () => {
           "paragraph",
           afterHtml,
           block.id,
-          { parentId: block.id, insertDirectlyAfter: true }
+          { parentId: block.id, insertDirectlyAfter: true } as any
         );
         focusBlockInput(newBlockId, "start");
         return;
@@ -1228,14 +1231,20 @@ export const EditorArea: React.FC = () => {
     }
   };
 
-  const handleWorkspacePaste = (e: React.ClipboardEvent) => {
+  const handleWorkspacePaste = async (e: React.ClipboardEvent) => {
     if (e.clipboardData.files && e.clipboardData.files.length > 0) {
       const file = e.clipboardData.files[0];
       if (file.type.startsWith("image/")) {
         e.preventDefault();
-        const url = URL.createObjectURL(file);
-        const newBlockId = addBlock(activePage.id, "image", "", selectedBlockId, { url, width: 100 });
-        setSelectedBlockId(newBlockId);
+        try {
+          const dataUrl = await platform.fileSystem.readFileAsDataUrl(file);
+          if (dataUrl && activePage) {
+            const newBlockId = addBlock(activePage.id, "image", "", selectedBlockId, { url: dataUrl, width: 100 });
+            setSelectedBlockId(newBlockId);
+          }
+        } catch (err) {
+          console.error("Failed to read pasted image file:", err);
+        }
         return;
       }
     }
@@ -1274,15 +1283,21 @@ export const EditorArea: React.FC = () => {
     }
   };
 
-  const handleWorkspaceDrop = (e: React.DragEvent) => {
+  const handleWorkspaceDrop = async (e: React.DragEvent) => {
     if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
       const file = e.dataTransfer.files[0];
       if (file.type.startsWith("image/")) {
         e.preventDefault();
         e.stopPropagation();
-        const url = URL.createObjectURL(file);
-        const newBlockId = addBlock(activePage.id, "image", "", selectedBlockId, { url, width: 100 });
-        setSelectedBlockId(newBlockId);
+        try {
+          const dataUrl = await platform.fileSystem.readFileAsDataUrl(file);
+          if (dataUrl && activePage) {
+            const newBlockId = addBlock(activePage.id, "image", "", selectedBlockId, { url: dataUrl, width: 100 });
+            setSelectedBlockId(newBlockId);
+          }
+        } catch (err) {
+          console.error("Failed to read dropped image file:", err);
+        }
       }
     }
   };

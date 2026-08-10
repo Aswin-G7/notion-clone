@@ -48,6 +48,9 @@ export const Sidebar: React.FC = () => {
     updatePage,
     setActivePageId,
     setIsSearchOpen,
+    setIsSettingsOpen,
+    setIsTrashOpen,
+    setIsTemplateModalOpen,
     exportWorkspace,
     importWorkspace,
     importPage,
@@ -61,9 +64,6 @@ export const Sidebar: React.FC = () => {
     await importPage();
   };
 
-  const [templateModalOpen, setTemplateModalOpen] = useState(false);
-  const [trashModalOpen, setTrashModalOpen] = useState(false);
-  const [settingsModalOpen, setSettingsModalOpen] = useState(false);
   const [isFavoritesExpanded, setIsFavoritesExpanded] = useState(true);
   const [isRecentExpanded, setIsRecentExpanded] = useState(true);
   const [showWorkspaceSelector, setShowWorkspaceSelector] = useState(false);
@@ -82,12 +82,12 @@ export const Sidebar: React.FC = () => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === ",") {
         e.preventDefault();
-        setSettingsModalOpen((prev) => !prev);
+        setIsSettingsOpen(true);
       }
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, []);
+  }, [setIsSettingsOpen]);
 
   // Drag and drop state for favorites reordering
   const [draggedFavId, setDraggedFavId] = useState<string | null>(null);
@@ -262,7 +262,7 @@ export const Sidebar: React.FC = () => {
           {/* Quick static settings action buttons */}
           <button
             id="sidebar-settings-btn"
-            onClick={() => setSettingsModalOpen(true)}
+            onClick={() => setIsSettingsOpen(true)}
             className="w-full flex items-center justify-between px-2.5 py-1.5 rounded-md text-stone-500 dark:text-stone-400 hover:text-stone-900 dark:hover:text-stone-100 hover:bg-stone-200/50 dark:hover:bg-stone-800/60 text-[12px] font-medium font-sans cursor-pointer transition-colors"
           >
             <div className="flex items-center gap-2">
@@ -427,7 +427,7 @@ export const Sidebar: React.FC = () => {
         <div className="p-2 border-t border-stone-200 dark:border-stone-800 bg-stone-50 dark:bg-[#202020] shrink-0 space-y-1">
           <button
             id="sidebar-templates-btn"
-            onClick={() => setTemplateModalOpen(true)}
+            onClick={() => setIsTemplateModalOpen(true)}
             className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-md text-stone-600 dark:text-stone-300 hover:text-stone-900 dark:hover:text-stone-100 hover:bg-stone-200/50 dark:hover:bg-stone-800/60 text-[13px] font-medium font-sans text-left transition-colors cursor-pointer"
           >
             <Sparkles className="h-4 w-4 text-amber-500 shrink-0" />
@@ -435,7 +435,7 @@ export const Sidebar: React.FC = () => {
           </button>
           <button
             id="sidebar-trash-btn"
-            onClick={() => setTrashModalOpen(true)}
+            onClick={() => setIsTrashOpen(true)}
             className="w-full flex items-center justify-between px-2.5 py-1.5 rounded-md text-stone-600 dark:text-stone-300 hover:text-stone-900 dark:hover:text-stone-100 hover:bg-stone-200/50 dark:hover:bg-stone-800/60 text-[13px] font-medium font-sans text-left transition-colors cursor-pointer"
           >
             <div className="flex items-center gap-2">
@@ -485,24 +485,6 @@ export const Sidebar: React.FC = () => {
           </button>
         </div>
       </aside>
-
-      {/* Template Gallery Modal */}
-      <TemplateGalleryModal
-        isOpen={templateModalOpen}
-        onClose={() => setTemplateModalOpen(false)}
-      />
-
-      {/* Trash System Modal */}
-      <TrashModal
-        isOpen={trashModalOpen}
-        onClose={() => setTrashModalOpen(false)}
-      />
-
-      {/* Global Settings Modal */}
-      <SettingsModal
-        isOpen={settingsModalOpen}
-        onClose={() => setSettingsModalOpen(false)}
-      />
 
       {/* Page Context Menu */}
       {contextMenuPage && contextMenuPos && (

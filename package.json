@@ -1,5 +1,7 @@
 {
-  "name": "react-example",
+  "name": "workspace-desktop",
+  "description": "Cross-Platform Workspace Desktop Application",
+  "author": "Workspace Team",
   "private": true,
   "version": "0.0.0",
   "main": "dist-electron/main.js",
@@ -17,13 +19,22 @@
   "build": {
     "appId": "com.workspace.desktop",
     "productName": "Workspace Desktop",
+    "asar": true,
     "directories": {
       "output": "release"
     },
     "files": [
-      "dist/**/*",
-      "dist-electron/**/*"
+      "dist",
+      "dist-electron",
+      "package.json"
     ],
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Workspace Desktop"
+    },
     "mac": {
       "category": "public.app-category.productivity",
       "target": [
@@ -70,6 +81,8 @@
     "@types/express": "^4.17.21",
     "@types/node": "^22.14.0",
     "@types/prismjs": "^1.26.6",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.4",
     "autoprefixer": "^10.4.21",
     "concurrently": "^10.0.4",
     "electron": "^43.2.0",
