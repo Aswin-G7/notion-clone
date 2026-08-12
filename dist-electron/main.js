@@ -1042,6 +1042,30 @@ async function createWindow() {
       sandbox: true
     }
   });
+  mainWindow.webContents.on("did-fail-load", (_event, errorCode, errorDescription, validatedURL) => {
+    console.error("[Electron] Renderer failed to load:", {
+      errorCode,
+      errorDescription,
+      validatedURL
+    });
+  });
+  mainWindow.webContents.on("render-process-gone", (_event, details) => {
+    console.error("[Electron] Renderer process gone:", details);
+  });
+  mainWindow.webContents.on("console-message", (_event, level, message, line, sourceId) => {
+    console.log("[Renderer Console]", {
+      level,
+      message,
+      line,
+      sourceId
+    });
+  });
+  mainWindow.webContents.on("preload-error", (_event, preloadPath, error) => {
+    console.error("[Electron] Preload error:", {
+      preloadPath,
+      error
+    });
+  });
   if (isDev) {
     const devUrl = process.env.VITE_DEV_SERVER_URL || "http://localhost:3000";
     await mainWindow.loadURL(devUrl);

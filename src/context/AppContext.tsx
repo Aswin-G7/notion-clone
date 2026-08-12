@@ -1565,19 +1565,8 @@ const getLastSubtreeBlockId = (targetId: string, blocks: Block[]): string => {
       if (keyLower === "z") {
         if (e.defaultPrevented) return;
 
-        const active = document.activeElement;
-        const isBlockInput =
-          active &&
-          ((active.id && (active.id.startsWith("block-input-") || active.id.startsWith("table-cell-") || active.id === "editor-page-title")) ||
-            !!active.closest("[id^='editor-block-wrapper-']") ||
-            !!active.closest("#editor-scroll-container"));
-
-        const isNonBlockStandardInput =
-          active &&
-          !isBlockInput &&
-          (active.tagName === "INPUT" || active.tagName === "TEXTAREA" || active.tagName === "SELECT");
-
-        if (isNonBlockStandardInput) {
+        // If user is editing text (in Lexical, input, textarea, etc.), let the editor handle text undo
+        if (isUserEditingText()) {
           return;
         }
 
@@ -1595,19 +1584,7 @@ const getLastSubtreeBlockId = (targetId: string, blocks: Block[]): string => {
       } else if (keyLower === "y") {
         if (e.defaultPrevented) return;
 
-        const active = document.activeElement;
-        const isBlockInput =
-          active &&
-          ((active.id && (active.id.startsWith("block-input-") || active.id.startsWith("table-cell-") || active.id === "editor-page-title")) ||
-            !!active.closest("[id^='editor-block-wrapper-']") ||
-            !!active.closest("#editor-scroll-container"));
-
-        const isNonBlockStandardInput =
-          active &&
-          !isBlockInput &&
-          (active.tagName === "INPUT" || active.tagName === "TEXTAREA" || active.tagName === "SELECT");
-
-        if (isNonBlockStandardInput) {
+        if (isUserEditingText()) {
           return;
         }
 
