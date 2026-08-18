@@ -169,6 +169,13 @@ export const SlashMenu: React.FC<SlashMenuProps> = ({
   // Window keydown listener in capture phase to intercept editor events
   useEffect(() => {
     const handleGlobalKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        event.stopPropagation();
+        onClose();
+        return;
+      }
+
       if (filtered.length === 0) return;
 
       if (event.key === "ArrowDown") {
@@ -183,10 +190,6 @@ export const SlashMenu: React.FC<SlashMenuProps> = ({
         event.preventDefault();
         event.stopPropagation();
         onSelect(filtered[selectedIndex].id);
-      } else if (event.key === "Escape") {
-        event.preventDefault();
-        event.stopPropagation();
-        onClose();
       }
     };
 

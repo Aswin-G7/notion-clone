@@ -58,6 +58,9 @@ export const SortableBlockWrapper: React.FC<SortableBlockWrapperProps> = ({
 
     if (!isInteractive) {
       e.stopPropagation();
+      if (document.activeElement instanceof HTMLElement) {
+        document.activeElement.blur();
+      }
       onDragClick(e);
     }
   };
@@ -70,6 +73,8 @@ export const SortableBlockWrapper: React.FC<SortableBlockWrapperProps> = ({
     }
   };
 
+  const isChildPage = block.type === "child-page";
+
   return (
     <div
       ref={setNodeRef}
@@ -81,7 +86,11 @@ export const SortableBlockWrapper: React.FC<SortableBlockWrapperProps> = ({
         isHighlighted
           ? "bg-amber-100/90 dark:bg-amber-950/50 ring-2 ring-amber-400 dark:ring-amber-500 shadow-md pl-2 duration-300"
           : isSelected
-          ? "bg-blue-50/90 dark:bg-blue-950/40 ring-1 ring-blue-300/60 dark:ring-blue-700/60 pl-2"
+          ? isChildPage
+            ? "border-transparent pl-0"
+            : "bg-blue-50/90 dark:bg-blue-950/40 ring-1 ring-blue-300/60 dark:ring-blue-700/60 pl-2"
+          : isChildPage
+          ? "border-transparent pl-0"
           : "border-transparent hover:bg-stone-50/40 dark:hover:bg-stone-800/30 pl-2"
       } ${isDragging ? "bg-stone-100/70 dark:bg-stone-800/70 border-stone-300 dark:border-stone-700 shadow-sm" : ""}`}
     >

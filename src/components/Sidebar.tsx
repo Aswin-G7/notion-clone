@@ -7,6 +7,7 @@ import { TrashModal } from "./TrashModal";
 import { PageContextMenu } from "./PageContextMenu";
 import { WorkspaceSelectorPopover } from "./WorkspaceSelectorPopover";
 import { SettingsModal } from "./SettingsModal";
+import { isUserEditingText } from "../utils/dom";
 import { Page } from "../types";
 import { WorkspaceInfo } from "../types/electron";
 import {
@@ -157,6 +158,15 @@ export const Sidebar: React.FC = () => {
   // Get only top-level pages (no parent) to start recursion
   const rootPages = pages.filter((page) => !page.parentId && !page.isDeleted);
 
+  const handleSidebarClick = (e: React.MouseEvent) => {
+    const target = e.target as HTMLElement;
+    if (!target.closest("input") && !target.closest("textarea")) {
+      if (document.activeElement instanceof HTMLElement && isUserEditingText()) {
+        document.activeElement.blur();
+      }
+    }
+  };
+
   return (
     <>
       {/* Mobile Sidebar Overlay Backdrop */}
@@ -171,6 +181,8 @@ export const Sidebar: React.FC = () => {
       {/* Main Sidebar Container */}
       <aside
         id="app-sidebar"
+        onClick={handleSidebarClick}
+        onMouseDown={handleSidebarClick}
         className={`fixed inset-y-0 left-0 z-40 flex flex-col w-[260px] bg-stone-50 dark:bg-[#202020] border-r border-stone-200 dark:border-stone-800 select-none transform transition-transform duration-300 ease-in-out md:static md:translate-x-0 ${
           sidebarOpen ? "translate-x-0" : "-translate-x-full md:hidden"
         }`}

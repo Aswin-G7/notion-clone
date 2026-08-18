@@ -38,6 +38,7 @@ import { PageHeader } from "./PageHeader";
 import { PREDEFINED_TEMPLATES } from "../templates/templateRegistry";
 import { useSettings } from "../hooks/useSettings";
 import { LineWidthOption } from "../types/settings";
+import { workspaceHistoryService, FocusTarget } from "../services/WorkspaceHistoryService";
 
 const getPlainTextFromHtml = (html: string): string => {
   if (!html) return "";
@@ -173,6 +174,7 @@ export const EditorArea: React.FC = () => {
     pages,
     activePage,
     updatePage,
+    recordPageRename,
     createPage,
     setActivePageId,
     selectedBlockId,
@@ -248,6 +250,8 @@ export const EditorArea: React.FC = () => {
       const el = document.getElementById(`block-input-${blockId}`);
       if (el) {
         el.focus();
+        el.dispatchEvent(new CustomEvent("set-caret-position", { detail: { position: caretPos } }));
+
         if (el instanceof HTMLTextAreaElement || el instanceof HTMLInputElement) {
           const len = caretPos === "start" ? 0 : el.value.length;
           el.setSelectionRange(len, len);
@@ -267,7 +271,7 @@ export const EditorArea: React.FC = () => {
             range.setStart(targetNode, offset);
             range.setEnd(targetNode, offset);
           } else {
-            range.selectNodeContents(el);
+            range.selectNodeContents(targetNode);
             range.collapse(caretPos === "start");
           }
 
@@ -303,6 +307,106 @@ export const EditorArea: React.FC = () => {
     },
     [addBlock]
   );
+
+  const pendingFocusRestoreRef = React.useRef<FocusTarget | null>(null);
+
+  const restoreFocusToTarget = React.useCallback(
+    (target: FocusTarget) => {
+      if (!activePage) return false;
+
+      // 1. If page title is the explicit target
+      if (target.focusTitle) {
+        const titleEl = document.getElementById("editor-title-input") as HTMLInputElement | null;
+        if (titleEl) {
+          titleEl.focus();
+          const len = target.caretPos === "start" ? 0 : titleEl.value.length;
+          titleEl.setSelectionRange(len, len);
+          return true;
+        }
+      }
+
+      // 2. If target has a specific blockId and it exists in current blocks
+      if (target.blockId) {
+        const targetBlock = activePage.blocks.find((b) => b.id === target.blockId);
+        if (targetBlock) {
+          if (target.tableCell) {
+            const { r, c } = target.tableCell;
+            const cellEl = (document.getElementById(`table-cell-${targetBlock.id}-${r}-${c}`) ||
+              (r === 0 && c === 0 ? document.getElementById(`block-input-${targetBlock.id}`) : null)) as HTMLTextAreaElement | null;
+            if (cellEl) {
+              cellEl.focus();
+              const len = target.caretPos === "start" ? 0 : cellEl.value.length;
+              cellEl.setSelectionRange(len, len);
+              return true;
+            }
+            return false;
+          }
+          focusBlockInput(targetBlock.id, target.caretPos || "end");
+          return true;
+        }
+      }
+
+      // 3. Target block does not exist or wasn't specified -> find nearest surviving editable block
+      if (activePage.blocks && activePage.blocks.length > 0) {
+        const editableBlocks = activePage.blocks.filter(
+          (b) => b.type !== "divider" && b.type !== "image"
+        );
+        const targetBlock =
+          editableBlocks.length > 0
+            ? target.caretPos === "start"
+              ? editableBlocks[0]
+              : editableBlocks[editableBlocks.length - 1]
+            : activePage.blocks[0];
+
+        if (targetBlock) {
+          focusBlockInput(targetBlock.id, target.caretPos || "end");
+          return true;
+        }
+      } else {
+        // Empty page: focus title input if available, do NOT auto-create phantom blocks during undo/redo
+        const titleEl = document.getElementById("editor-title-input") as HTMLInputElement | null;
+        if (titleEl) {
+          titleEl.focus();
+          return true;
+        }
+      }
+
+      return false;
+    },
+    [activePage, focusFirstEditableBlock]
+  );
+
+  // Subscribe to WorkspaceHistoryService focus restoration
+  React.useEffect(() => {
+    return workspaceHistoryService.onFocusRestore((target) => {
+      pendingFocusRestoreRef.current = target;
+      if (!target.pageId || target.pageId === activePage?.id) {
+        const ok = restoreFocusToTarget(target);
+        if (!ok) {
+          requestAnimationFrame(() => {
+            restoreFocusToTarget(target);
+          });
+        }
+      }
+    });
+  }, [restoreFocusToTarget, activePage?.id]);
+
+  // When activePage or its blocks change, if a focus restore is pending, execute it after layout commit
+  React.useLayoutEffect(() => {
+    if (pendingFocusRestoreRef.current) {
+      const target = pendingFocusRestoreRef.current;
+      if (target.pageId && activePage?.id && target.pageId !== activePage.id) {
+        return;
+      }
+      pendingFocusRestoreRef.current = null;
+      const ok = restoreFocusToTarget(target);
+      if (!ok) {
+        requestAnimationFrame(() => {
+          restoreFocusToTarget(target);
+        });
+      }
+    }
+  }, [activePage, restoreFocusToTarget]);
 
   const isInitialMountRef = React.useRef(true);
   const lastFocusedPageIdRef = React.useRef<string | null>(null);
@@ -536,18 +640,9 @@ export const EditorArea: React.FC = () => {
 
       const isCmdOrCtrl = e.metaKey || e.ctrlKey;
 
-      // Top priority: Global block clipboard paste (Ctrl+V) when blockClipboard exists and NO text is selected
-      if (isCmdOrCtrl && e.key.toLowerCase() === "v" && blockClipboard && !hasTextSelection(activeEl) && activePage) {
-        let targetBlockId = selectedBlockId;
-        if (!targetBlockId && activeEl) {
-          const wrapper = activeEl.closest("[id^='editor-block-wrapper-']");
-          if (wrapper) {
-            targetBlockId = wrapper.id.replace("editor-block-wrapper-", "");
-          }
-        }
-        if (!targetBlockId && activePage.blocks.length > 0) {
-          targetBlockId = activePage.blocks[activePage.blocks.length - 1].id;
-        }
+      // Top priority: Global block clipboard paste (Ctrl+V) when blockClipboard exists in Block Selected Mode
+      if (isCmdOrCtrl && e.key.toLowerCase() === "v" && blockClipboard && !isEditing && selectedBlockId && activePage) {
+        const targetBlockId = selectedBlockId;
 
         if (targetBlockId) {
           e.preventDefault();
@@ -822,11 +917,9 @@ export const EditorArea: React.FC = () => {
           setSlashMenuSearch(query);
         }
       } else {
-        if (slashMenuBlockId === blockId) {
-          setSlashMenuOpen(false);
-          setSlashMenuBlockId(null);
-          setSlashMenuSearch("");
-        }
+        setSlashMenuOpen(false);
+        setSlashMenuBlockId(null);
+        setSlashMenuSearch("");
       }
     }
   };
@@ -950,6 +1043,9 @@ export const EditorArea: React.FC = () => {
     setSelectedBlockId(blockId);
     setContextMenuBlockId(null);
     setContextMenuPosition(null);
+    if (document.activeElement instanceof HTMLElement) {
+      document.activeElement.blur();
+    }
   };
 
   const handleBlockContextMenu = (e: React.MouseEvent, blockId: string) => {
@@ -958,6 +1054,9 @@ export const EditorArea: React.FC = () => {
     setSelectedBlockId(blockId);
     setContextMenuBlockId(blockId);
     setContextMenuPosition({ x: e.clientX, y: e.clientY });
+    if (document.activeElement instanceof HTMLElement) {
+      document.activeElement.blur();
+    }
   };
 
   const handleTurnIntoBlock = (blockId: string, type: BlockType, extraData?: any) => {
@@ -1215,7 +1314,7 @@ export const EditorArea: React.FC = () => {
       }
     }
 
-    if (e.key === "Enter") {
+    if (e.key === "Enter" || e.key === " ") {
       e.preventDefault();
       const childPage = pages.find((p) => p.id === block.data.pageId && !p.isDeleted);
       if (childPage) {
@@ -1317,8 +1416,29 @@ export const EditorArea: React.FC = () => {
       target.closest("textarea") ||
       target.closest("[contenteditable='true']");
 
-    if (!isInteractive && activePage) {
-      setSelectedBlockId(null);
+    if (!isInteractive) {
+      if (activePage) {
+        setSelectedBlockId(null);
+      }
+      if (document.activeElement instanceof HTMLElement) {
+        document.activeElement.blur();
+      }
+    }
+  };
+
+  const handleWorkspaceMouseDown = (e: React.MouseEvent) => {
+    const target = e.target as HTMLElement;
+    const isInteractive =
+      target.closest("[id^='editor-block-wrapper-']") ||
+      target.closest("button") ||
+      target.closest("input") ||
+      target.closest("textarea") ||
+      target.closest("[contenteditable='true']");
+
+    if (!isInteractive) {
+      if (document.activeElement instanceof HTMLElement) {
+        document.activeElement.blur();
+      }
     }
   };
 
@@ -1342,6 +1462,7 @@ export const EditorArea: React.FC = () => {
     <div
       id="editor-workspace"
       onClick={handleWorkspaceClick}
+      onMouseDown={handleWorkspaceMouseDown}
       onPaste={handleWorkspacePaste}
       onDrop={handleWorkspaceDrop}
       onDragOver={handleWorkspaceDragOver}
@@ -1425,10 +1546,14 @@ export const EditorArea: React.FC = () => {
                       marginTopClass = "mt-0";
                     } else if (isListType && isPrevSameType) {
                       marginTopClass = "mt-0";
+                    } else if (block.type === "child-page") {
+                      marginTopClass = "mt-1";
                     }
 
                     let paddingYClass = "py-2";
                     if (isListType) {
+                      paddingYClass = "py-0.5";
+                    } else if (block.type === "child-page") {
                       paddingYClass = "py-0.5";
                     }
 

@@ -5,7 +5,7 @@ import { LexicalComposer } from "@lexical/react/LexicalComposer";
 import { RichTextPlugin } from "@lexical/react/LexicalRichTextPlugin";
 import { ContentEditable } from "@lexical/react/LexicalContentEditable";
 import { LexicalErrorBoundary } from "@lexical/react/LexicalErrorBoundary";
-import { HistoryPlugin } from "@lexical/react/LexicalHistoryPlugin";
+import { HistoryPlugin, createEmptyHistoryState } from "@lexical/react/LexicalHistoryPlugin";
 import { OnChangePlugin } from "@lexical/react/LexicalOnChangePlugin";
 import { useLexicalComposerContext } from "@lexical/react/LexicalComposerContext";
 import { $generateHtmlFromNodes, $generateNodesFromDOM } from "@lexical/html";
@@ -26,8 +26,35 @@ import {
   COMMAND_PRIORITY_NORMAL,
   COMMAND_PRIORITY_HIGH,
   COMMAND_PRIORITY_LOW,
+  COMMAND_PRIORITY_CRITICAL,
   FOCUS_COMMAND,
+  UNDO_COMMAND,
+  REDO_COMMAND,
+  CAN_UNDO_COMMAND,
+  CAN_REDO_COMMAND,
+  mergeRegister,
 } from "lexical";
+import { workspaceHistoryService } from "../services/WorkspaceHistoryService";
+
+// Module-level cache to preserve Lexical text-level HistoryState per block across structural unmount/remount
+const blockHistoryCache = new Map<string, any>();
+
+export function getOrCreateBlockHistoryState(blockId: string) {
+  let state = blockHistoryCache.get(blockId);
+  if (!state) {
+    state = createEmptyHistoryState();
+    blockHistoryCache.set(blockId, state);
+  }
+  return state;
+}
+
+export function clearBlockHistoryCache() {
+  blockHistoryCache.clear();
+}
+
+export function removeBlockHistoryState(blockId: string) {
+  blockHistoryCache.delete(blockId);
+}
 
 // Helper to sanitize URLs by adding default https:// protocol if missing
 function sanitizeUrl(url: string): string {
@@ -115,9 +142,10 @@ function getSelectionOffsets(editor: any) {
 interface SyncValuePluginProps {
   value: string;
   lastHtmlRef: React.MutableRefObject<string>;
+  isProgrammaticUpdateRef: React.MutableRefObject<boolean>;
 }
 
-function SyncValuePlugin({ value, lastHtmlRef }: SyncValuePluginProps) {
+function SyncValuePlugin({ value, lastHtmlRef, isProgrammaticUpdateRef }: SyncValuePluginProps) {
   const [editor] = useLexicalComposerContext();
 
   useEffect(() => {
@@ -126,6 +154,7 @@ function SyncValuePlugin({ value, lastHtmlRef }: SyncValuePluginProps) {
     }
 
     lastHtmlRef.current = value;
+    isProgrammaticUpdateRef.current = true;
 
     editor.update(() => {
       const root = $getRoot();
@@ -150,7 +179,7 @@ function SyncValuePlugin({ value, lastHtmlRef }: SyncValuePluginProps) {
         root.append(paragraph);
       }
     });
-  }, [value, editor, lastHtmlRef]);
+  }, [value, editor, lastHtmlRef, isProgrammaticUpdateRef]);
 
   return null;
 }
@@ -159,6 +188,36 @@ function SyncValuePlugin({ value, lastHtmlRef }: SyncValuePluginProps) {
 interface ShortcutsPluginProps {
   onKeyDown: (e: any) => void;
   onFocus: () => void;
+}
+
+function CaretPositionPlugin() {
+  const [editor] = useLexicalComposerContext();
+
+  useEffect(() => {
+    const rootElement = editor.getRootElement();
+    if (!rootElement) return;
+
+    const handleSetCaretPosition = (event: Event) => {
+      const customEvent = event as CustomEvent<{ position?: "start" | "end" }>;
+      const position = customEvent.detail?.position || "start";
+      editor.update(() => {
+        const root = $getRoot();
+        if (position === "start") {
+          root.selectStart();
+        } else {
+          root.selectEnd();
+        }
+      });
+      editor.focus();
+    };
+
+    rootElement.addEventListener("set-caret-position", handleSetCaretPosition);
+    return () => {
+      rootElement.removeEventListener("set-caret-position", handleSetCaretPosition);
+    };
+  }, [editor]);
+
+  return null;
 }
 
 function ShortcutsPlugin({ onKeyDown, onFocus }: ShortcutsPluginProps) {
@@ -183,6 +242,24 @@ function ShortcutsPlugin({ onKeyDown, onFocus }: ShortcutsPluginProps) {
         const keyLower = key.toLowerCase();
         const isMetaOrCtrl = ctrlKey || metaKey;
 
+        // --- Undo / Redo Shortcuts inside Lexical Editor ---
+        // Always route through unified workspace history to guarantee chronological order
+        if (isMetaOrCtrl && keyLower === "z") {
+          event.preventDefault();
+          event.stopPropagation();
+          if (!shiftKey) {
+            workspaceHistoryService.undo();
+          } else {
+            workspaceHistoryService.redo();
+          }
+          return true;
+        } else if (isMetaOrCtrl && keyLower === "y") {
+          event.preventDefault();
+          event.stopPropagation();
+          workspaceHistoryService.redo();
+          return true;
+        }
+
         // --- Formatting Shortcuts ---
         // 1. Ctrl+Shift+S (Strikethrough)
         if (isMetaOrCtrl && shiftKey && keyLower === "s") {
@@ -197,6 +274,14 @@ function ShortcutsPlugin({ onKeyDown, onFocus }: ShortcutsPluginProps) {
           event.preventDefault();
           event.stopPropagation();
           editor.dispatchCommand(FORMAT_TEXT_COMMAND, "code");
+          return true;
+        }
+
+        // 3. Escape (Exit text editing to block/workspace level)
+        if (keyLower === "escape") {
+          event.preventDefault();
+          event.stopPropagation();
+          editor.getRootElement()?.blur();
           return true;
         }
 
@@ -722,6 +807,7 @@ export const RichTextEditor: React.FC<RichTextEditorProps> = ({
   spellCheck = true,
 }) => {
   const lastHtmlRef = useRef(value);
+  const isProgrammaticUpdateRef = useRef(true);
 
   const initialConfig = {
     namespace: `block-${id}`,
@@ -784,20 +870,24 @@ export const RichTextEditor: React.FC<RichTextEditorProps> = ({
           }
           ErrorBoundary={LexicalErrorBoundary}
         />
-        <HistoryPlugin />
         <OnChangePlugin
           onChange={(editorState, editor) => {
+            const isProgrammatic = isProgrammaticUpdateRef.current || workspaceHistoryService.isExecutingUndoRedo();
+            isProgrammaticUpdateRef.current = false;
             editorState.read(() => {
               const html = $generateHtmlFromNodes(editor, null);
               if (html !== lastHtmlRef.current) {
                 lastHtmlRef.current = html;
-                onChange(html);
+                if (!isProgrammatic) {
+                  onChange(html);
+                }
               }
             });
           }}
         />
         <LinkPlugin />
-        <SyncValuePlugin value={value} lastHtmlRef={lastHtmlRef} />
+        <SyncValuePlugin value={value} lastHtmlRef={lastHtmlRef} isProgrammaticUpdateRef={isProgrammaticUpdateRef} />
+        <CaretPositionPlugin />
         <ShortcutsPlugin onKeyDown={onKeyDown} onFocus={onFocus} />
         <FloatingToolbarPlugin />
       </div>

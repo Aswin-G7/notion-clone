@@ -10,7 +10,7 @@ import { exportService, WorkspaceImporter } from "../services/export";
 import { pageImportService } from "../services/import";
 import { notificationService } from "../services/NotificationService";
 import { workspaceHistoryService } from "../services/WorkspaceHistoryService";
-import { isUserEditingText } from "../utils/dom";
+import { isUserEditingText, setupGlobalTextFocusManager } from "../utils/dom";
 import { platform } from "../platform";
 import { resolveNextActivePage } from "../utils/navigation";
 
@@ -40,7 +40,8 @@ interface AppContextType {
   createPageFromTemplate: (templateId: string, parentId?: string | null) => string;
   applyTemplateToPage: (pageId: string, templateId: string) => void;
   deletePage: (id: string) => void;
-  updatePage: (id: string, updates: Partial<Page>) => void;
+  updatePage: (id: string, updates: Partial<Page>, recordHistory?: boolean) => void;
+  recordPageRename: (pageId: string, oldTitle: string, newTitle: string) => void;
   addBlock: (
     pageId: string,
     type: BlockType,
@@ -239,6 +240,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
 
     const prevActiveId = activePageId;
+    const parentPage = parentId ? pages.find((p) => p.id === parentId) : null;
+    let predecessorBlockId: string | null = insertAfterBlockId || null;
+    if (!predecessorBlockId && parentPage && parentPage.blocks.length > 0) {
+      predecessorBlockId = parentPage.blocks[parentPage.blocks.length - 1].id;
+    }
 
     setPages((prev) => {
       let updatedPages = [...prev, newPage];
@@ -291,6 +297,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         description: "Create Page",
         timestamp: Date.now(),
         pageId: newId,
+        focusOnUndo: {
+          pageId: parentId || prevActiveId || null,
+          blockId: predecessorBlockId,
+          caretPos: "end",
+        },
+        focusOnRedo: {
+          pageId: newId,
+          blockId: null,
+          caretPos: "start",
+        },
         execute: () => {
           setPages((prev) => {
             if (prev.some((p) => p.id === newId)) return prev;
@@ -408,6 +424,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         description: `Create Page from Template (${template.name})`,
         timestamp: Date.now(),
         pageId: newPage.id,
+        focusOnUndo: {
+          pageId: parentId || prevActiveId || null,
+          blockId: null,
+          caretPos: "end",
+        },
+        focusOnRedo: {
+          pageId: newPage.id,
+          blockId: null,
+          caretPos: "start",
+        },
         execute: () => {
           setPages((prev) => {
             if (prev.some((p) => p.id === newPage.id)) return prev;
@@ -510,6 +536,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         description: "Apply Template",
         timestamp: Date.now(),
         pageId: pageId,
+        focusOnUndo: {
+          pageId: pageId,
+          blockId: null,
+          caretPos: "start",
+        },
+        focusOnRedo: {
+          pageId: pageId,
+          blockId: null,
+          caretPos: "start",
+        },
         execute: () => {
           setPages((prev) =>
             prev.map((p) => {
@@ -584,6 +620,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         description: "Delete Page",
         timestamp: Date.now(),
         pageId: id,
+        focusOnUndo: {
+          pageId: id,
+          blockId: null,
+          caretPos: "end",
+        },
+        focusOnRedo: {
+          pageId: nextActiveId || prevActiveId,
+          blockId: null,
+          caretPos: "end",
+        },
         execute: () => {
           setPages((prev) => trashService.softDeletePage(prev, id));
           if (isActiveAffected && nextActiveId) {
@@ -637,8 +683,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
-  const updatePage = (id: string, updates: Partial<Page>) => {
-    const target = pages.find((p) => p.id === id);
+  const updatePage = (id: string, updates: Partial<Page>, recordHistory = true) => {
+    const target = pagesRef.current.find((p) => p.id === id);
     if (!target) {
       setPages((prev) =>
         prev.map((page) =>
@@ -658,18 +704,38 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       )
     );
 
-    if (!workspaceHistoryService.isExecutingUndoRedo()) {
-      const isMeaningful =
-        (updates.title !== undefined && updates.title !== oldTitle) ||
+    if (recordHistory && !workspaceHistoryService.isExecutingUndoRedo()) {
+      if (updates.title !== undefined && updates.title !== oldTitle) {
+        workspaceHistoryService.registerTitleEdit(
+          id,
+          oldTitle || "",
+          updates.title,
+          (pId, newTitle) => {
+            setPages((prev) =>
+              prev.map((p) => (p.id === pId ? { ...p, title: newTitle, updatedAt: Date.now() } : p))
+            );
+          }
+        );
+      }
+
+      const isOtherMeaningful =
         (updates.icon !== undefined && updates.icon !== oldIcon) ||
         (updates.coverImage !== undefined && updates.coverImage !== oldCover);
 
-      if (isMeaningful) {
+      if (isOtherMeaningful) {
         workspaceHistoryService.registerCommand({
           id: `update_page_${id}_${Date.now()}`,
-          description: updates.title !== undefined ? "Rename Page" : "Update Page",
+          description: "Update Page",
           timestamp: Date.now(),
           pageId: id,
+          focusOnUndo: {
+            pageId: id,
+            caretPos: "end",
+          },
+          focusOnRedo: {
+            pageId: id,
+            caretPos: "end",
+          },
           execute: () => {
             setPages((prev) =>
               prev.map((page) =>
@@ -683,7 +749,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 page.id === id
                   ? {
                       ...page,
-                      title: updates.title !== undefined ? oldTitle : page.title,
                       icon: updates.icon !== undefined ? oldIcon : page.icon,
                       coverImage: updates.coverImage !== undefined ? oldCover : page.coverImage,
                       updatedAt: Date.now(),
@@ -696,6 +761,42 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
     }
   };
+
+  const recordPageRename = useCallback((pageId: string, oldTitle: string, newTitle: string) => {
+    if (oldTitle === newTitle) return;
+    if (workspaceHistoryService.isExecutingUndoRedo()) return;
+
+    workspaceHistoryService.registerCommand({
+      id: `rename_page_${pageId}_${Date.now()}`,
+      description: "Rename Page",
+      timestamp: Date.now(),
+      pageId: pageId,
+      focusOnUndo: {
+        pageId,
+        focusTitle: true,
+        caretPos: "end",
+      },
+      focusOnRedo: {
+        pageId,
+        focusTitle: true,
+        caretPos: "end",
+      },
+      execute: () => {
+        setPages((prev) =>
+          prev.map((page) =>
+            page.id === pageId ? { ...page, title: newTitle, updatedAt: Date.now() } : page
+          )
+        );
+      },
+      undo: () => {
+        setPages((prev) =>
+          prev.map((page) =>
+            page.id === pageId ? { ...page, title: oldTitle, updatedAt: Date.now() } : page
+          )
+        );
+      },
+    });
+  }, []);
 
 const getDescendantIds = (targetId: string, blocks: Block[]): string[] => {
   const children = blocks.filter((b) => b.data?.parentId === targetId);
@@ -726,6 +827,19 @@ const getLastSubtreeBlockId = (targetId: string, blocks: Block[]): string => {
     extraData?: Partial<Block["data"]> & { insertDirectlyAfter?: boolean }
   ) => {
     const newBlockId = `block-${Math.random().toString(36).substr(2, 9)}`;
+
+    const pageToModify = pages.find((p) => p.id === pageId);
+    let predecessorBlockId: string | null = null;
+    if (pageToModify) {
+      if (insertAfterBlockId) {
+        const targetId = extraData?.insertDirectlyAfter
+          ? insertAfterBlockId
+          : getLastSubtreeBlockId(insertAfterBlockId, pageToModify.blocks);
+        predecessorBlockId = targetId;
+      } else if (pageToModify.blocks.length > 0) {
+        predecessorBlockId = pageToModify.blocks[pageToModify.blocks.length - 1].id;
+      }
+    }
 
     setPages((prev) =>
       prev.map((page) => {
@@ -774,15 +888,28 @@ const getLastSubtreeBlockId = (targetId: string, blocks: Block[]): string => {
     );
 
     if (!workspaceHistoryService.isExecutingUndoRedo()) {
+      let blockSnapshot: Block | null = null;
+
       workspaceHistoryService.registerCommand({
         id: `add_block_${newBlockId}`,
         description: "Add Block",
         timestamp: Date.now(),
         pageId: pageId,
+        focusOnUndo: {
+          pageId: pageId,
+          blockId: predecessorBlockId,
+          caretPos: "end",
+        },
+        focusOnRedo: {
+          pageId: pageId,
+          blockId: newBlockId,
+          caretPos: "end",
+        },
         execute: () => {
           setPages((prev) =>
             prev.map((page) => {
               if (page.id !== pageId) return page;
+              if (page.blocks.some((b) => b.id === newBlockId)) return page;
               let targetParentId: string | null = null;
               if (extraData?.parentId !== undefined) {
                 targetParentId = extraData.parentId;
@@ -794,17 +921,19 @@ const getLastSubtreeBlockId = (targetId: string, blocks: Block[]): string => {
               const newExtraData = { ...extraData };
               delete (newExtraData as any).insertDirectlyAfter;
 
-              const newBlock: Block = {
-                id: newBlockId,
-                type,
-                data: {
-                  text,
-                  level: type === "heading" ? 2 : undefined,
-                  checked: type === "todo" ? false : undefined,
-                  ...newExtraData,
-                  parentId: targetParentId,
-                },
-              };
+              const newBlock: Block = blockSnapshot
+                ? JSON.parse(JSON.stringify(blockSnapshot))
+                : {
+                    id: newBlockId,
+                    type,
+                    data: {
+                      text,
+                      level: type === "heading" ? 2 : undefined,
+                      checked: type === "todo" ? false : undefined,
+                      ...newExtraData,
+                      parentId: targetParentId,
+                    },
+                  };
 
               let newBlocks = [...page.blocks];
               if (insertAfterBlockId) {
@@ -829,6 +958,10 @@ const getLastSubtreeBlockId = (targetId: string, blocks: Block[]): string => {
           setPages((prev) =>
             prev.map((page) => {
               if (page.id !== pageId) return page;
+              const existing = page.blocks.find((b) => b.id === newBlockId);
+              if (existing) {
+                blockSnapshot = JSON.parse(JSON.stringify(existing));
+              }
               return {
                 ...page,
                 blocks: page.blocks.filter((b) => b.id !== newBlockId),
@@ -845,13 +978,17 @@ const getLastSubtreeBlockId = (targetId: string, blocks: Block[]): string => {
   };
 
   const updateBlock = (pageId: string, blockId: string, text: string) => {
+    const page = pagesRef.current.find((p) => p.id === pageId);
+    const currentBlock = page?.blocks.find((b) => b.id === blockId);
+    const oldText = currentBlock?.data?.text !== undefined ? currentBlock.data.text : "";
+
     setPages((prev) =>
-      prev.map((page) => {
-        if (page.id !== pageId) return page;
+      prev.map((p) => {
+        if (p.id !== pageId) return p;
 
         return {
-          ...page,
-          blocks: page.blocks.map((block) =>
+          ...p,
+          blocks: p.blocks.map((block) =>
             block.id === blockId
               ? { ...block, data: { ...block.data, text } }
               : block
@@ -860,6 +997,31 @@ const getLastSubtreeBlockId = (targetId: string, blocks: Block[]): string => {
         };
       })
     );
+
+    if (!workspaceHistoryService.isExecutingUndoRedo() && oldText !== text) {
+      workspaceHistoryService.registerTextEdit(
+        pageId,
+        blockId,
+        oldText,
+        text,
+        (pId, bId, val) => {
+          setPages((prev) =>
+            prev.map((p) => {
+              if (p.id !== pId) return p;
+              return {
+                ...p,
+                blocks: p.blocks.map((block) =>
+                  block.id === bId
+                    ? { ...block, data: { ...block.data, text: val } }
+                    : block
+                ),
+                updatedAt: Date.now()
+              };
+            })
+          );
+        }
+      );
+    }
   };
 
   const updateBlockType = (
@@ -868,7 +1030,7 @@ const getLastSubtreeBlockId = (targetId: string, blocks: Block[]): string => {
     type: BlockType,
     extraData?: Partial<Block["data"]>
   ) => {
-    const pageToModify = pages.find((p) => p.id === pageId);
+    const pageToModify = pagesRef.current.find((p) => p.id === pageId);
     const prevBlock = pageToModify?.blocks.find((b) => b.id === blockId);
 
     setPages((prev) =>
@@ -903,6 +1065,16 @@ const getLastSubtreeBlockId = (targetId: string, blocks: Block[]): string => {
         description: "Change Block Type",
         timestamp: Date.now(),
         pageId: pageId,
+        focusOnUndo: {
+          pageId: pageId,
+          blockId: blockId,
+          caretPos: "start",
+        },
+        focusOnRedo: {
+          pageId: pageId,
+          blockId: blockId,
+          caretPos: "start",
+        },
         execute: () => {
           setPages((prev) =>
             prev.map((page) => {
@@ -950,7 +1122,7 @@ const getLastSubtreeBlockId = (targetId: string, blocks: Block[]): string => {
     blockId: string,
     data: Partial<Block["data"]>
   ) => {
-    const pageToModify = pages.find((p) => p.id === pageId);
+    const pageToModify = pagesRef.current.find((p) => p.id === pageId);
     const prevBlock = pageToModify?.blocks.find((b) => b.id === blockId);
 
     setPages((prev) =>
@@ -977,13 +1149,73 @@ const getLastSubtreeBlockId = (targetId: string, blocks: Block[]): string => {
 
     const isPureTextUpdate = Object.keys(data).length === 1 && "text" in data;
 
+    if (isPureTextUpdate && data.text !== undefined && !workspaceHistoryService.isExecutingUndoRedo() && pageToModify && prevBlock) {
+      const oldText = prevBlock.data?.text || "";
+      if (oldText !== data.text) {
+        workspaceHistoryService.registerTextEdit(
+          pageId,
+          blockId,
+          oldText,
+          data.text,
+          (pId, bId, val) => {
+            setPages((prev) =>
+              prev.map((p) => {
+                if (p.id !== pId) return p;
+                return {
+                  ...p,
+                  blocks: p.blocks.map((block) =>
+                    block.id === bId
+                      ? { ...block, data: { ...block.data, text: val } }
+                      : block
+                  ),
+                  updatedAt: Date.now(),
+                };
+              })
+            );
+          }
+        );
+      }
+    }
+
     if (!isPureTextUpdate && !workspaceHistoryService.isExecutingUndoRedo() && pageToModify && prevBlock) {
       const oldData = JSON.parse(JSON.stringify(prevBlock.data));
+
+      let tableCell: { r: number; c: number } | undefined = undefined;
+      if (prevBlock.type === "table" || (Array.isArray(prevBlock.data?.rows) && Array.isArray(data.rows))) {
+        const oldRows: string[][] = Array.isArray(prevBlock.data?.rows) ? prevBlock.data.rows : [];
+        const newRows: string[][] = Array.isArray(data.rows) ? data.rows : [];
+        const maxR = Math.max(oldRows.length, newRows.length);
+        for (let r = 0; r < maxR; r++) {
+          const oldRow: string[] = Array.isArray(oldRows[r]) ? oldRows[r] : [];
+          const newRow: string[] = Array.isArray(newRows[r]) ? newRows[r] : [];
+          const maxC = Math.max(oldRow.length, newRow.length);
+          for (let c = 0; c < maxC; c++) {
+            if (oldRow[c] !== newRow[c]) {
+              tableCell = { r, c };
+              break;
+            }
+          }
+          if (tableCell) break;
+        }
+      }
+
       workspaceHistoryService.registerCommand({
         id: `update_block_data_${blockId}_${Date.now()}`,
         description: "Update Block Data",
         timestamp: Date.now(),
         pageId: pageId,
+        focusOnUndo: {
+          pageId: pageId,
+          blockId: blockId,
+          caretPos: "end",
+          tableCell,
+        },
+        focusOnRedo: {
+          pageId: pageId,
+          blockId: blockId,
+          caretPos: "end",
+          tableCell,
+        },
         execute: () => {
           setPages((prev) =>
             prev.map((page) => {
@@ -1026,8 +1258,26 @@ const getLastSubtreeBlockId = (targetId: string, blocks: Block[]): string => {
   };
 
   const deleteBlock = (pageId: string, blockId: string) => {
-    const pageToModify = pages.find((p) => p.id === pageId);
-    const prevBlocks = pageToModify?.blocks;
+    const pageToModify = pagesRef.current.find((p) => p.id === pageId);
+    let prevBlocks: Block[] = pageToModify ? JSON.parse(JSON.stringify(pageToModify.blocks)) : [];
+
+    // Check if the block was modified/emptied immediately before deletion
+    const preEditText = workspaceHistoryService.popRecentTextEditForBlock(blockId);
+    if (preEditText !== null && prevBlocks) {
+      prevBlocks = prevBlocks.map((b) =>
+        b.id === blockId ? { ...b, data: { ...b.data, text: preEditText } } : b
+      );
+    }
+
+    let predecessorBlockId: string | null = null;
+    if (pageToModify) {
+      const currentIndex = pageToModify.blocks.findIndex((b) => b.id === blockId);
+      if (currentIndex > 0) {
+        predecessorBlockId = pageToModify.blocks[currentIndex - 1].id;
+      } else if (currentIndex === 0 && pageToModify.blocks.length > 1) {
+        predecessorBlockId = pageToModify.blocks[1].id;
+      }
+    }
 
     setPages((prev) =>
       prev.map((page) => {
@@ -1067,6 +1317,16 @@ const getLastSubtreeBlockId = (targetId: string, blocks: Block[]): string => {
         description: "Delete Block",
         timestamp: Date.now(),
         pageId: pageId,
+        focusOnUndo: {
+          pageId: pageId,
+          blockId: blockId,
+          caretPos: "end",
+        },
+        focusOnRedo: {
+          pageId: pageId,
+          blockId: predecessorBlockId,
+          caretPos: "end",
+        },
         execute: () => {
           setPages((prev) =>
             prev.map((page) => {
@@ -1103,7 +1363,7 @@ const getLastSubtreeBlockId = (targetId: string, blocks: Block[]): string => {
     }
 
     // If it was a child-page block, also trigger the subpage deletion to keep state clean.
-    const activePg = pages.find((p) => p.id === pageId);
+    const activePg = pagesRef.current.find((p) => p.id === pageId);
     if (activePg) {
       const blk = activePg.blocks.find((b) => b.id === blockId);
       if (blk && blk.type === "child-page" && blk.data.pageId) {
@@ -1166,6 +1426,16 @@ const getLastSubtreeBlockId = (targetId: string, blocks: Block[]): string => {
         description: "Reorder Blocks",
         timestamp: Date.now(),
         pageId: pageId,
+        focusOnUndo: {
+          pageId: pageId,
+          blockId: activeId,
+          caretPos: "end",
+        },
+        focusOnRedo: {
+          pageId: pageId,
+          blockId: activeId,
+          caretPos: "end",
+        },
         execute: () => {
           setPages((prev) =>
             prev.map((page) =>
@@ -1249,6 +1519,16 @@ const getLastSubtreeBlockId = (targetId: string, blocks: Block[]): string => {
         description: "Duplicate Block",
         timestamp: Date.now(),
         pageId: pageId,
+        focusOnUndo: {
+          pageId: pageId,
+          blockId: blockId,
+          caretPos: "end",
+        },
+        focusOnRedo: {
+          pageId: pageId,
+          blockId: newBlockId,
+          caretPos: "end",
+        },
         execute: () => {
           setPages((prev) =>
             prev.map((p) => {
@@ -1417,6 +1697,16 @@ const getLastSubtreeBlockId = (targetId: string, blocks: Block[]): string => {
         description: "Paste Block",
         timestamp: Date.now(),
         pageId: pageId,
+        focusOnUndo: {
+          pageId: pageId,
+          blockId: targetBlockId,
+          caretPos: "end",
+        },
+        focusOnRedo: {
+          pageId: pageId,
+          blockId: newRootId,
+          caretPos: "end",
+        },
         execute: () => {
           setPages((prev) =>
             prev.map((page) => {
@@ -1548,6 +1838,11 @@ const getLastSubtreeBlockId = (targetId: string, blocks: Block[]): string => {
     return workspaceHistoryService.redo();
   }, []);
 
+  useEffect(() => {
+    const cleanupFocus = setupGlobalTextFocusManager();
+    return cleanupFocus;
+  }, []);
+
   // Global Keyboard Shortcuts: Search (Ctrl+P / Ctrl+K), Undo (Ctrl+Z), Redo (Ctrl+Shift+Z / Ctrl+Y)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -1565,11 +1860,6 @@ const getLastSubtreeBlockId = (targetId: string, blocks: Block[]): string => {
       if (keyLower === "z") {
         if (e.defaultPrevented) return;
 
-        // If user is editing text (in Lexical, input, textarea, etc.), let the editor handle text undo
-        if (isUserEditingText()) {
-          return;
-        }
-
         if (e.shiftKey) {
           if (workspaceHistoryService.canRedo()) {
             e.preventDefault();
@@ -1583,10 +1873,6 @@ const getLastSubtreeBlockId = (targetId: string, blocks: Block[]): string => {
         }
       } else if (keyLower === "y") {
         if (e.defaultPrevented) return;
-
-        if (isUserEditingText()) {
-          return;
-        }
 
         if (workspaceHistoryService.canRedo()) {
           e.preventDefault();
@@ -1709,6 +1995,17 @@ const getLastSubtreeBlockId = (targetId: string, blocks: Block[]): string => {
         id: `restore_page_${pageId}_${Date.now()}`,
         description: "Restore Page",
         timestamp: Date.now(),
+        pageId: pageId,
+        focusOnUndo: {
+          pageId: null,
+          blockId: null,
+          caretPos: "end",
+        },
+        focusOnRedo: {
+          pageId: pageId,
+          blockId: null,
+          caretPos: "start",
+        },
         execute: () => {
           setPages((prev) => trashService.restorePage(prev, pageId));
           setActivePageIdState(pageId);
@@ -1878,6 +2175,7 @@ const getLastSubtreeBlockId = (targetId: string, blocks: Block[]): string => {
         applyTemplateToPage,
         deletePage,
         updatePage,
+        recordPageRename,
         addBlock,
         updateBlock,
         updateBlockType,

@@ -18,6 +18,7 @@ import "prismjs/components/prism-markdown";
 
 import { Block } from "../types";
 import { useSettings } from "../hooks/useSettings";
+import { workspaceHistoryService } from "../services/WorkspaceHistoryService";
 
 export const CODE_LANGUAGES = [
   { id: "plaintext", label: "Plain Text" },
@@ -154,6 +155,10 @@ export const CodeBlock: React.FC<CodeBlockProps> = ({
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [langMenuOpen]);
 
+  const codeUndoStack = useRef<{ text: string; selectionStart: number; selectionEnd: number }[]>([]);
+  const codeRedoStack = useRef<{ text: string; selectionStart: number; selectionEnd: number }[]>([]);
+  const lastCodeEditTimestamp = useRef<number>(0);
+
   const handleCopy = (e: React.MouseEvent) => {
     e.stopPropagation();
     e.preventDefault();
@@ -164,6 +169,16 @@ export const CodeBlock: React.FC<CodeBlockProps> = ({
 
   const handleTextChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const val = e.target.value;
+    const textarea = textareaRef.current;
+    if (textarea) {
+      codeUndoStack.current.push({
+        text: rawText,
+        selectionStart: textarea.selectionStart,
+        selectionEnd: textarea.selectionEnd,
+      });
+      codeRedoStack.current = [];
+      lastCodeEditTimestamp.current = Date.now();
+    }
     updateBlockData(activePageId, block.id, { text: val });
   };
 
@@ -175,7 +190,27 @@ export const CodeBlock: React.FC<CodeBlockProps> = ({
     const end = textarea.selectionEnd;
     const value = textarea.value;
 
-    // Tab key: Insert 2 spaces or handle multi-line indentation
+    const isCmdOrCtrl = e.metaKey || e.ctrlKey;
+    if (isCmdOrCtrl) {
+      const keyLower = e.key.toLowerCase();
+      if (keyLower === "z") {
+        e.preventDefault();
+        e.stopPropagation();
+        if (!e.shiftKey) {
+          workspaceHistoryService.undo();
+        } else {
+          workspaceHistoryService.redo();
+        }
+        return;
+      } else if (keyLower === "y") {
+        e.preventDefault();
+        e.stopPropagation();
+        workspaceHistoryService.redo();
+        return;
+      }
+    }
+
+    // Tab key: Insert spaces or handle multi-line indentation
     if (e.key === "Tab" && !e.shiftKey) {
       e.preventDefault();
       e.stopPropagation();
@@ -183,11 +218,15 @@ export const CodeBlock: React.FC<CodeBlockProps> = ({
       if (start === end) {
         // Single cursor position
         const newValue = value.substring(0, start) + tabIndent + value.substring(end);
+        const newPos = start + tabWidth;
+        textarea.value = newValue;
+        textarea.selectionStart = textarea.selectionEnd = newPos;
+        lastSelectionRef.current = { start: newPos, end: newPos };
         updateBlockData(activePageId, block.id, { text: newValue });
 
         setTimeout(() => {
           if (textareaRef.current) {
-            textareaRef.current.selectionStart = textareaRef.current.selectionEnd = start + tabWidth;
+            textareaRef.current.selectionStart = textareaRef.current.selectionEnd = newPos;
           }
         }, 0);
       } else {
@@ -203,13 +242,20 @@ export const CodeBlock: React.FC<CodeBlockProps> = ({
           .join("\n");
 
         const newValue = value.substring(0, lineStart) + indentedText + value.substring(effectiveEnd);
+        const addedChars = indentedText.length - selectedText.length;
+        const newStart = start + tabWidth;
+        const newEnd = end + addedChars;
+
+        textarea.value = newValue;
+        textarea.selectionStart = newStart;
+        textarea.selectionEnd = newEnd;
+        lastSelectionRef.current = { start: newStart, end: newEnd };
         updateBlockData(activePageId, block.id, { text: newValue });
 
-        const addedChars = indentedText.length - selectedText.length;
         setTimeout(() => {
           if (textareaRef.current) {
-            textareaRef.current.selectionStart = start + tabWidth;
-            textareaRef.current.selectionEnd = end + addedChars;
+            textareaRef.current.selectionStart = newStart;
+            textareaRef.current.selectionEnd = newEnd;
           }
         }, 0);
       }
@@ -252,13 +298,20 @@ export const CodeBlock: React.FC<CodeBlockProps> = ({
         .join("\n");
 
       const newValue = value.substring(0, lineStart) + unindentedText + value.substring(effectiveEnd);
+      const totalRemoved = selectedText.length - unindentedText.length;
+      const newStart = Math.max(lineStart, start - charsRemovedFirstLine);
+      const newEnd = Math.max(lineStart, end - totalRemoved);
+
+      textarea.value = newValue;
+      textarea.selectionStart = newStart;
+      textarea.selectionEnd = newEnd;
+      lastSelectionRef.current = { start: newStart, end: newEnd };
       updateBlockData(activePageId, block.id, { text: newValue });
 
-      const totalRemoved = selectedText.length - unindentedText.length;
       setTimeout(() => {
         if (textareaRef.current) {
-          textareaRef.current.selectionStart = Math.max(lineStart, start - charsRemovedFirstLine);
-          textareaRef.current.selectionEnd = Math.max(lineStart, end - totalRemoved);
+          textareaRef.current.selectionStart = newStart;
+          textareaRef.current.selectionEnd = newEnd;
         }
       }, 0);
       return;

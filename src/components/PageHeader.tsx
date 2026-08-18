@@ -1,12 +1,14 @@
-import React, { useState, useCallback, memo } from "react";
+import React, { useState, useCallback, memo, useEffect, useRef } from "react";
 import { Smile, Image as ImageIcon, X } from "lucide-react";
 import { Page } from "../types";
 import { EmojiPickerPopover } from "./EmojiPickerPopover";
 import { CoverPickerPopover, COVER_PRESETS } from "./CoverPickerPopover";
+import { workspaceHistoryService } from "../services/WorkspaceHistoryService";
 
 interface PageHeaderProps {
   page: Page;
   onUpdateTitle: (title: string) => void;
+  onCommitTitle?: (oldTitle: string, newTitle: string) => void;
   onUpdateIcon: (icon: string | null) => void;
   onUpdateCover: (coverUrl: string | null) => void;
   onTitleKeyDown?: (e: React.KeyboardEvent<HTMLInputElement>) => void;
@@ -15,15 +17,60 @@ interface PageHeaderProps {
 export const PageHeader: React.FC<PageHeaderProps> = memo(({
   page,
   onUpdateTitle,
+  onCommitTitle,
   onUpdateIcon,
   onUpdateCover,
   onTitleKeyDown,
 }) => {
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [showCoverPicker, setShowCoverPicker] = useState(false);
+  const initialTitleRef = useRef(page.title);
+
+  useEffect(() => {
+    initialTitleRef.current = page.title;
+  }, [page.title]);
+
+  const handleTitleFocus = () => {
+    initialTitleRef.current = page.title;
+  };
 
   const handleTitleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     onUpdateTitle(e.target.value);
+  };
+
+  const handleTitleBlur = () => {
+    if (page.title !== initialTitleRef.current) {
+      if (onCommitTitle) {
+        onCommitTitle(initialTitleRef.current, page.title);
+      }
+      initialTitleRef.current = page.title;
+    }
+  };
+
+  const handleInternalTitleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    const isCmdOrCtrl = e.metaKey || e.ctrlKey;
+    if (isCmdOrCtrl) {
+      const keyLower = e.key.toLowerCase();
+      if (keyLower === "z") {
+        e.preventDefault();
+        e.stopPropagation();
+        if (!e.shiftKey) {
+          workspaceHistoryService.undo();
+        } else {
+          workspaceHistoryService.redo();
+        }
+        return;
+      } else if (keyLower === "y") {
+        e.preventDefault();
+        e.stopPropagation();
+        workspaceHistoryService.redo();
+        return;
+      }
+    }
+
+    if (onTitleKeyDown) {
+      onTitleKeyDown(e);
+    }
   };
 
   const handleAddIconShortcut = () => {
@@ -193,8 +240,10 @@ export const PageHeader: React.FC<PageHeaderProps> = memo(({
             id="editor-title-input"
             type="text"
             value={page.title}
+            onFocus={handleTitleFocus}
+            onBlur={handleTitleBlur}
             onChange={handleTitleChange}
-            onKeyDown={onTitleKeyDown}
+            onKeyDown={handleInternalTitleKeyDown}
             placeholder="Untitled Page"
             className="w-full font-display font-bold tracking-tight text-3xl sm:text-4xl text-stone-900 dark:text-stone-100 placeholder-stone-300 dark:placeholder-stone-600 outline-none border-none py-1 resize-none select-text focus:placeholder-stone-300 dark:focus:placeholder-stone-600 transition-all"
           />

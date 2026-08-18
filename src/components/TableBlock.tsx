@@ -13,6 +13,7 @@ import {
   Sparkles,
 } from "lucide-react";
 import { Block } from "../types";
+import { workspaceHistoryService } from "../services/WorkspaceHistoryService";
 
 interface TableBlockProps {
   block: Block;
@@ -113,6 +114,35 @@ export const TableBlock: React.FC<TableBlockProps> = ({
     const end = textarea.selectionEnd;
     const value = textarea.value;
 
+    const isCmdOrCtrl = e.metaKey || e.ctrlKey;
+    if (isCmdOrCtrl) {
+      const keyLower = e.key.toLowerCase();
+      if (keyLower === "z") {
+        if (!e.shiftKey) {
+          if (workspaceHistoryService.canUndo()) {
+            e.preventDefault();
+            e.stopPropagation();
+            workspaceHistoryService.undo();
+            return;
+          }
+        } else {
+          if (workspaceHistoryService.canRedo()) {
+            e.preventDefault();
+            e.stopPropagation();
+            workspaceHistoryService.redo();
+            return;
+          }
+        }
+      } else if (keyLower === "y") {
+        if (workspaceHistoryService.canRedo()) {
+          e.preventDefault();
+          e.stopPropagation();
+          workspaceHistoryService.redo();
+          return;
+        }
+      }
+    }
+
     // Tab key navigation
     if (e.key === "Tab" && !e.shiftKey) {
       e.preventDefault();
@@ -142,10 +172,21 @@ export const TableBlock: React.FC<TableBlockProps> = ({
       return;
     }
 
-    // Enter key: create newline inside current cell
-    if (e.key === "Enter") {
-      e.stopPropagation(); // Stop block creation in editor
-      // Normal textarea newline handles automatically, auto-resize will trigger
+    // Shift+Enter: create newline inside current cell
+    if (e.key === "Enter" && e.shiftKey) {
+      e.stopPropagation(); // Stop block creation in editor, allow default textarea newline
+      return;
+    }
+
+    // Normal Enter key: move to the cell below or insert new row if on last row
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      e.stopPropagation();
+      if (rIdx < numRows - 1) {
+        focusCell(rIdx + 1, cIdx, "start");
+      } else {
+        insertRow(numRows, cIdx);
+      }
       return;
     }
 

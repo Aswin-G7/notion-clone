@@ -110,19 +110,11 @@ export const NativeMenuListener: React.FC = () => {
           break;
 
         case "edit:undo":
-          if (isUserEditingText()) {
-            document.execCommand("undo");
-          } else {
-            undo();
-          }
+          undo();
           break;
 
         case "edit:redo":
-          if (isUserEditingText()) {
-            document.execCommand("redo");
-          } else {
-            redo();
-          }
+          redo();
           break;
 
         case "edit:duplicate-block":
