@@ -1,9 +1,13 @@
 {
   "name": "workspace-desktop",
   "description": "Cross-Platform Workspace Desktop Application",
-  "author": "Workspace Team",
+  "author": {
+    "name": "Workspace Team",
+    "email": "support@workspace.desktop"
+  },
+  "homepage": "https://workspace.desktop",
   "private": true,
-  "version": "1.0.0-rc1",
+  "version": "1.0.0",
   "main": "dist-electron/main.js",
   "type": "module",
   "scripts": {
@@ -50,8 +54,7 @@
     },
     "linux": {
       "target": [
-        "AppImage",
-        "deb"
+        "AppImage"
       ]
     }
   },
